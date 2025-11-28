@@ -1,0 +1,5 @@
+{
+  "name": "KSEF V8",
+  "description": "A secure, hierarchical, multi-level web application for managing the Kenya Science and Engineering Fair (KSEF). The platform digitizes project submission, judging, and administration.",
+  "requestFramePermissions": []
+}

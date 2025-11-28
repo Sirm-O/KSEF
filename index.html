@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KSEF Online Judging Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              'primary': '#00A8E8',
+              'primary-dark': '#007EA7',
+              'secondary': '#003459',
+              'background-light': '#F0F4F8',
+              'background-dark': '#0A192F',
+              'card-light': '#FFFFFF',
+              'card-dark': '#172A45',
+              'text-light': '#1E293B',
+              'text-dark': '#E2E8F0',
+              'text-muted-light': '#64748B',
+              'text-muted-dark': '#94A3B8',
+              'accent-green': '#64FFDA',
+              'accent-red': '#F87171',
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.543.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.2.0",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.8.2",
+    "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1",
+    "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^3.8.2",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.1.1",
+    "@supabase/supabase-js": "https://cdn.skypack.dev/@supabase/supabase-js@2.43.4",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-background-light dark:bg-background-dark">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
