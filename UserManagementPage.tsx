@@ -6,7 +6,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { AppContext } from '../context/AppContext';
 import { User, UserRole, CompetitionLevel, Project, JudgeAssignment, ProjectStatus } from '../types';
-import { UserPlus, Edit, Trash2, Settings, Search, AlertCircle, Info, KeyRound, Users, Eye, FileDown, CheckCircle, Clock } from 'lucide-react';
+import { UserPlus, Edit, Trash2, Settings, Search, AlertCircle, Info, KeyRound, Users, Eye, FileDown, CheckCircle, Clock, MessageCircle } from 'lucide-react';
 import BulkOperationsModal from '../components/admin/BulkOperationsModal'; // --- NEW IMPORT ---
 import JudgeCategoryAssignmentModal from '../components/admin/JudgeCategoryAssignmentModal';
 import JudgeAssignmentsViewModal from '../components/admin/JudgeAssignmentsViewModal'; // --- NEW IMPORT ---
@@ -32,19 +32,19 @@ const getCreatableRoles = (adminRole: UserRole): UserRole[] => {
 };
 
 const toTitleCase = (str: string): string => {
-  if (!str) return '';
-  return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    if (!str) return '';
+    return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
 const ROLE_HIERARCHY_MAP: Record<UserRole, number> = {
-  [UserRole.SUPER_ADMIN]: 0,
-  [UserRole.NATIONAL_ADMIN]: 1,
-  [UserRole.REGIONAL_ADMIN]: 2,
-  [UserRole.COUNTY_ADMIN]: 3,
-  [UserRole.SUB_COUNTY_ADMIN]: 4,
-  [UserRole.COORDINATOR]: 5,
-  [UserRole.JUDGE]: 6,
-  [UserRole.PATRON]: 7,
+    [UserRole.SUPER_ADMIN]: 0,
+    [UserRole.NATIONAL_ADMIN]: 1,
+    [UserRole.REGIONAL_ADMIN]: 2,
+    [UserRole.COUNTY_ADMIN]: 3,
+    [UserRole.SUB_COUNTY_ADMIN]: 4,
+    [UserRole.COORDINATOR]: 5,
+    [UserRole.JUDGE]: 6,
+    [UserRole.PATRON]: 7,
 };
 
 // --- NEW, IMPROVED ADD/EDIT USER MODAL ---
@@ -57,7 +57,8 @@ const AddEditUserModal: React.FC<{
 
     const [formData, setFormData] = useState<Partial<User>>({ roles: [] });
     const [validationError, setValidationError] = useState('');
-    
+    const [createdUser, setCreatedUser] = useState<{ name: string; password?: string; phoneNumber?: string } | null>(null);
+
     const [workCountiesForSelect, setWorkCountiesForSelect] = useState<string[]>([]);
     const [workSubCountiesForSelect, setWorkSubCountiesForSelect] = useState<string[]>([]);
 
@@ -65,9 +66,9 @@ const AddEditUserModal: React.FC<{
     const [suggestions, setSuggestions] = useState<User[]>([]);
     const [activeSuggestionField, setActiveSuggestionField] = useState<'email' | 'tscNumber' | 'idNumber' | null>(null);
     const suggestionRef = useRef<HTMLUListElement>(null);
-    
+
     const creatableRoles = useMemo(() => currentUser ? getCreatableRoles(currentUser.currentRole) : [], [currentUser]);
-    
+
     const isSelfEditing = useMemo(() => userToEdit && currentUser && userToEdit.id === currentUser.id, [userToEdit, currentUser]);
 
     const isJudgeOrCoordinatorToEdit = useMemo(() => {
@@ -81,16 +82,16 @@ const AddEditUserModal: React.FC<{
 
     const { regionsForSelect, countiesForSelect, subCountiesForSelect, isRegionLocked, isCountyLocked, isSubCountyLocked } = useMemo(() => {
         if (!currentUser) return { regionsForSelect: [], countiesForSelect: [], subCountiesForSelect: [], isRegionLocked: true, isCountyLocked: true, isSubCountyLocked: true };
-        
+
         let regions = Object.keys(geographicalData).sort();
         let counties: string[] = [];
         let subCounties: string[] = [];
-        
+
         let regionLocked = false;
         let countyLocked = false;
         let subCountyLocked = false;
 
-        switch(currentUser.currentRole) {
+        switch (currentUser.currentRole) {
             case UserRole.REGIONAL_ADMIN:
                 regions = currentUser.region ? [currentUser.region] : [];
                 counties = formData.region ? Object.keys(geographicalData[formData.region] || {}).sort() : [];
@@ -112,14 +113,14 @@ const AddEditUserModal: React.FC<{
                 countyLocked = true;
                 subCountyLocked = true;
                 break;
-            default: 
-                 counties = formData.region ? Object.keys(geographicalData[formData.region] || {}).sort() : [];
-                 subCounties = (formData.region && formData.county) ? Object.keys(geographicalData[formData.region][formData.county] || {}).sort() : [];
+            default:
+                counties = formData.region ? Object.keys(geographicalData[formData.region] || {}).sort() : [];
+                subCounties = (formData.region && formData.county) ? Object.keys(geographicalData[formData.region][formData.county] || {}).sort() : [];
         }
 
-        return { 
-            regionsForSelect: regions, 
-            countiesForSelect: counties, 
+        return {
+            regionsForSelect: regions,
+            countiesForSelect: counties,
             subCountiesForSelect: subCounties,
             isRegionLocked: regionLocked,
             isCountyLocked: countyLocked,
@@ -152,7 +153,7 @@ const AddEditUserModal: React.FC<{
                         initialData.workCounty = currentUser.county;
                         initialData.workSubCounty = currentUser.subCounty;
                         break;
-                    default: 
+                    default:
                         initialData.workRegion = undefined;
                         initialData.workCounty = undefined;
                         initialData.workSubCounty = undefined;
@@ -164,7 +165,7 @@ const AddEditUserModal: React.FC<{
             setValidationError('');
         }
     }, [isOpen, userToEdit, currentUser, isRegionLocked, isCountyLocked, isSubCountyLocked]);
-    
+
     // --- NEW: Debounced search effect ---
     useEffect(() => {
         if (userToEdit) return; // Don't search if we are editing from the main list
@@ -219,7 +220,7 @@ const AddEditUserModal: React.FC<{
         const roles = formData.roles || [];
         const hasAdminRole = roles.some(r => ADMIN_ROLES.includes(r));
         const hasJudgeRole = roles.some(r => JUDGE_ROLES.includes(r));
-        
+
         let conflict = false;
         if (hasAdminRole && hasJudgeRole) {
             if (roles.includes(UserRole.REGIONAL_ADMIN) && formData.region) conflict = true;
@@ -270,12 +271,12 @@ const AddEditUserModal: React.FC<{
 
     const handleRoleChange = (role: UserRole, isChecked: boolean) => {
         setFormData(prev => {
-            if (!prev) return null; 
+            if (!prev) return null;
             const currentRoles = prev.roles || [];
             let newRoles = isChecked
                 ? [...currentRoles, role]
                 : currentRoles.filter(r => r !== role);
-            
+
             // --- NEW: Enforce mutual exclusivity ---
             if (isChecked) {
                 if (role === UserRole.COORDINATOR) {
@@ -295,12 +296,18 @@ const AddEditUserModal: React.FC<{
         if (validationError) return;
 
         if (!formData.name || !formData.email || !formData.roles || formData.roles.length === 0) {
-             setValidationError('Name, email, and at least one role are required.');
+            setValidationError('Name, email, and at least one role are required.');
             return;
         }
-        
+
+        // Validate phone number if provided (basic check)
+        if (formData.phoneNumber && !/^\d{10,15}$/.test(formData.phoneNumber.replace(/\+/g, ''))) {
+            setValidationError('Please enter a valid phone number (digits only, optionally starting with +).');
+            return;
+        }
+
         const isDuplicateEmail = users.some(u => u.email.toLowerCase() === formData.email?.toLowerCase() && u.id !== (formData.id || userToEdit?.id));
-        if(isDuplicateEmail) {
+        if (isDuplicateEmail) {
             setValidationError('An account with this email already exists.');
             return;
         }
@@ -308,155 +315,223 @@ const AddEditUserModal: React.FC<{
         const userPayload = { ...formData, name: toTitleCase(formData.name || '') };
 
         if (userToEdit || formData.id) { // Check if we're editing an existing user
-            updateUserInList(userPayload as User);
+            await updateUserInList(userPayload as User);
+            onClose();
         } else {
-            addUserToList(userPayload as Omit<User, 'id'>);
+            const result = await addUserToList(userPayload as Omit<User, 'id'>);
+            if (result && result.success && result.password) {
+                setCreatedUser({
+                    name: userPayload.name,
+                    password: result.password,
+                    phoneNumber: userPayload.phoneNumber
+                });
+            } else if (!result || !result.success) {
+                // Error is handled by context notification, but ensure we don't close or show success
+            } else {
+                onClose(); // Fallback if no password returned (shouldn't happen with new logic)
+            }
         }
-        onClose();
     };
-    
+
+    // --- NEW: Reset state when modal opens/closes ---
+    useEffect(() => {
+        if (!isOpen) {
+            setCreatedUser(null);
+        }
+    }, [isOpen]);
+
     if (!currentUser) return null;
-    
+
     const showPersonalGeoFields = formData.roles && formData.roles.some(r => r !== UserRole.NATIONAL_ADMIN && r !== UserRole.SUPER_ADMIN);
     const showWorkGeoFields = userToEdit && (userToEdit.roles.includes(UserRole.JUDGE) || userToEdit.roles.includes(UserRole.COORDINATOR));
 
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={userToEdit ? `Edit User: ${userToEdit.name}` : 'Add New User'} size="xl">
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {validationError && (
-                    <div className="p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 rounded-md text-red-700 dark:text-red-300 flex items-center gap-2">
-                        <AlertCircle className="w-5 h-5" />
-                        <p>{validationError}</p>
+        <Modal isOpen={isOpen} onClose={onClose} title={createdUser ? 'User Created Successfully' : (userToEdit ? `Edit User: ${userToEdit.name}` : 'Add New User')} size="xl">
+            {createdUser ? (
+                <div className="flex flex-col items-center justify-center space-y-6 py-4 animate-fade-in">
+                    <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-full">
+                        <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
                     </div>
-                )}
+                    <h3 className="text-xl font-bold text-center">User Account Created!</h3>
+                    <p className="text-center text-gray-600 dark:text-gray-300 max-w-sm">
+                        The user <strong>{createdUser.name}</strong> has been added to the system.
+                    </p>
 
-                <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
-                    <legend className="px-2 font-semibold text-lg">User Details</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-medium mb-1">Full Name</label>
-                            <input type="text" name="name" id="name" value={formData.name || ''} onChange={handleChange} required className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
-                        </div>
-                        <div className="relative">
-                            <label htmlFor="email" className="block text-sm font-medium mb-1">Email Address</label>
-                            <input type="email" name="email" id="email" value={formData.email || ''} onChange={handleChange} required disabled={!!(userToEdit || formData.id)} onFocus={() => setActiveSuggestionField('email')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800" />
-                            {activeSuggestionField === 'email' && suggestions.length > 0 && (
-                                <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                    {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.email})</li>)}
-                                </ul>
-                            )}
-                        </div>
+                    <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg w-full max-w-sm text-center border dark:border-gray-700">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Initial Password</p>
+                        <p className="text-2xl font-mono font-bold tracking-wider select-all">{createdUser.password}</p>
                     </div>
-                </fieldset>
-                
-                {isJudgeOrCoordinatorOrPatron && !(userToEdit || formData.id) && (
-                    <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
-                        <legend className="px-2 font-semibold text-lg">Additional Identifiers (for reactivation)</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative">
-                                <label htmlFor="tscNumber" className="block text-sm font-medium mb-1">TSC/Service Number</label>
-                                <input type="text" name="tscNumber" id="tscNumber" value={formData.tscNumber || ''} onChange={handleChange} onFocus={() => setActiveSuggestionField('tscNumber')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
-                                 {activeSuggestionField === 'tscNumber' && suggestions.length > 0 && (
-                                    <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                        {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.tscNumber})</li>)}
-                                    </ul>
-                                )}
-                            </div>
-                            <div className="relative">
-                                <label htmlFor="idNumber" className="block text-sm font-medium mb-1">National ID Number</label>
-                                <input type="text" name="idNumber" id="idNumber" value={formData.idNumber || ''} onChange={handleChange} onFocus={() => setActiveSuggestionField('idNumber')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
-                                {activeSuggestionField === 'idNumber' && suggestions.length > 0 && (
-                                    <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                        {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.idNumber})</li>)}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-                    </fieldset>
-                )}
 
-
-                <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
-                    <legend className="px-2 font-semibold text-lg">Roles</legend>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {creatableRoles.map(role => (
-                            <div key={role} className="flex items-center gap-2">
-                                <input type="checkbox" id={`role-${role}`} checked={formData.roles?.includes(role)} onChange={e => handleRoleChange(role, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
-                                <label htmlFor={`role-${role}`} className="text-sm">{role}</label>
+                    <div className="flex gap-4 w-full max-w-sm">
+                        {createdUser.phoneNumber ? (
+                            <Button
+                                onClick={() => {
+                                    const message = `Halo ${createdUser.name}, Welcome to KSEF! Your account has been created. Your initial password is: *${createdUser.password}* . Please login at https://portal.ksef.co.ke`;
+                                    const url = `https://wa.me/${createdUser.phoneNumber.replace('+', '')}?text=${encodeURIComponent(message)}`;
+                                    window.open(url, '_blank');
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-white border-none"
+                            >
+                                <MessageCircle className="w-5 h-5" /> Send via WhatsApp
+                            </Button>
+                        ) : (
+                            <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded w-full text-center">
+                                No phone number provided. Send password manually.
                             </div>
-                        ))}
+                        )}
                     </div>
-                </fieldset>
 
-                {showPersonalGeoFields && (
-                    <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
-                        <legend className="px-2 font-semibold text-lg">Personal Geographical Scope</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label htmlFor="region" className="block text-sm font-medium mb-1">Region</label>
-                                <select name="region" id="region" value={formData.region || ''} onChange={handleChange} disabled={isRegionLocked} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
-                                    <option value="">-- Select Region --</option>
-                                    {regionsForSelect.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label htmlFor="county" className="block text-sm font-medium mb-1">County</label>
-                                <select name="county" id="county" value={formData.county || ''} onChange={handleChange} disabled={isCountyLocked || !formData.region} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
-                                    <option value="">-- Select County --</option>
-                                    {countiesForSelect.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label htmlFor="subCounty" className="block text-sm font-medium mb-1">Sub-County</label>
-                                <select name="subCounty" id="subCounty" value={formData.subCounty || ''} onChange={handleChange} disabled={isSubCountyLocked || !formData.county} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
-                                    <option value="">-- Select Sub-County --</option>
-                                    {subCountiesForSelect.map(sc => <option key={sc} value={sc}>{sc}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </fieldset>
-                )}
-                
-                {showWorkGeoFields && (
-                    <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
-                        <legend className="px-2 font-semibold text-lg flex items-center gap-2">
-                            Work Jurisdiction <Info size={14} title="This defines the geographical area this judge/coordinator can be assigned to."/>
-                        </legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                           <div>
-                                <label htmlFor="workRegion" className="block text-sm font-medium mb-1">Work Region</label>
-                                <select name="workRegion" id="workRegion" value={formData.workRegion || ''} onChange={handleChange} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600">
-                                    <option value="">-- Select Region --</option>
-                                    {Object.keys(geographicalData).sort().map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label htmlFor="workCounty" className="block text-sm font-medium mb-1">Work County</label>
-                                <select name="workCounty" id="workCounty" value={formData.workCounty || ''} onChange={handleChange} disabled={!formData.workRegion} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
-                                    <option value="">-- Select County --</option>
-                                    {workCountiesForSelect.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                             <div>
-                                <label htmlFor="workSubCounty" className="block text-sm font-medium mb-1">Work Sub-County</label>
-                                <select name="workSubCounty" id="workSubCounty" value={formData.workSubCounty || ''} onChange={handleChange} disabled={!formData.workCounty} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
-                                    <option value="">-- Select Sub-County --</option>
-                                    {workSubCountiesForSelect.map(sc => <option key={sc} value={sc}>{sc}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </fieldset>
-                )}
-
-
-                <div className="flex justify-end gap-4 pt-4">
-                    <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button type="submit" disabled={!!validationError}>
-                        {userToEdit || formData.id ? 'Save Changes' : 'Create User'}
-                    </Button>
+                    <div className="pt-4 w-full max-w-sm border-t dark:border-gray-700">
+                        <Button
+                            variant="secondary"
+                            onClick={onClose}
+                            className="w-full"
+                        >
+                            Done
+                        </Button>
+                    </div>
                 </div>
-            </form>
+            ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {validationError && (
+                        <div className="p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 rounded-md text-red-700 dark:text-red-300 flex items-center gap-2">
+                            <AlertCircle className="w-5 h-5" />
+                            <p>{validationError}</p>
+                        </div>
+                    )}
+
+                    <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
+                        <legend className="px-2 font-semibold text-lg">User Details</legend>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="name" className="block text-sm font-medium mb-1">Full Name</label>
+                                <input type="text" name="name" id="name" value={formData.name || ''} onChange={handleChange} required className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
+                            </div>
+                            <div className="relative">
+                                <label htmlFor="email" className="block text-sm font-medium mb-1">Email Address</label>
+                                <input type="email" name="email" id="email" value={formData.email || ''} onChange={handleChange} required disabled={!!(userToEdit || formData.id)} onFocus={() => setActiveSuggestionField('email')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800" />
+                                {activeSuggestionField === 'email' && suggestions.length > 0 && (
+                                    <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                        {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.email})</li>)}
+                                    </ul>
+                                )}
+                            </div>
+                            <div>
+                                <label htmlFor="phoneNumber" className="block text-sm font-medium mb-1">Phone Number (WhatsApp)</label>
+                                <input type="text" name="phoneNumber" id="phoneNumber" placeholder="e.g 2547..." value={formData.phoneNumber || ''} onChange={handleChange} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    {isJudgeOrCoordinatorOrPatron && !(userToEdit || formData.id) && (
+                        <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
+                            <legend className="px-2 font-semibold text-lg">Additional Identifiers (for reactivation)</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="relative">
+                                    <label htmlFor="tscNumber" className="block text-sm font-medium mb-1">TSC/Service Number</label>
+                                    <input type="text" name="tscNumber" id="tscNumber" value={formData.tscNumber || ''} onChange={handleChange} onFocus={() => setActiveSuggestionField('tscNumber')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
+                                    {activeSuggestionField === 'tscNumber' && suggestions.length > 0 && (
+                                        <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                            {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.tscNumber})</li>)}
+                                        </ul>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <label htmlFor="idNumber" className="block text-sm font-medium mb-1">National ID Number</label>
+                                    <input type="text" name="idNumber" id="idNumber" value={formData.idNumber || ''} onChange={handleChange} onFocus={() => setActiveSuggestionField('idNumber')} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" />
+                                    {activeSuggestionField === 'idNumber' && suggestions.length > 0 && (
+                                        <ul ref={suggestionRef} className="absolute z-20 w-full mt-1 bg-card-light dark:bg-card-dark border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                            {suggestions.map(s => <li key={s.id} onClick={() => handleSuggestionClick(s)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{s.name} ({s.idNumber})</li>)}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+                        </fieldset>
+                    )}
+
+
+                    <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
+                        <legend className="px-2 font-semibold text-lg">Roles</legend>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {creatableRoles.map(role => (
+                                <div key={role} className="flex items-center gap-2">
+                                    <input type="checkbox" id={`role-${role}`} checked={formData.roles?.includes(role)} onChange={e => handleRoleChange(role, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                                    <label htmlFor={`role-${role}`} className="text-sm">{role}</label>
+                                </div>
+                            ))}
+                        </div>
+                    </fieldset>
+
+                    {showPersonalGeoFields && (
+                        <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
+                            <legend className="px-2 font-semibold text-lg">Personal Geographical Scope</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label htmlFor="region" className="block text-sm font-medium mb-1">Region</label>
+                                    <select name="region" id="region" value={formData.region || ''} onChange={handleChange} disabled={isRegionLocked} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
+                                        <option value="">-- Select Region --</option>
+                                        {regionsForSelect.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="county" className="block text-sm font-medium mb-1">County</label>
+                                    <select name="county" id="county" value={formData.county || ''} onChange={handleChange} disabled={isCountyLocked || !formData.region} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
+                                        <option value="">-- Select County --</option>
+                                        {countiesForSelect.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="subCounty" className="block text-sm font-medium mb-1">Sub-County</label>
+                                    <select name="subCounty" id="subCounty" value={formData.subCounty || ''} onChange={handleChange} disabled={isSubCountyLocked || !formData.county} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
+                                        <option value="">-- Select Sub-County --</option>
+                                        {subCountiesForSelect.map(sc => <option key={sc} value={sc}>{sc}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </fieldset>
+                    )}
+
+                    {showWorkGeoFields && (
+                        <fieldset className="space-y-4 border p-4 rounded-md dark:border-gray-700">
+                            <legend className="px-2 font-semibold text-lg flex items-center gap-2">
+                                Work Jurisdiction <Info size={14} title="This defines the geographical area this judge/coordinator can be assigned to." />
+                            </legend>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label htmlFor="workRegion" className="block text-sm font-medium mb-1">Work Region</label>
+                                    <select name="workRegion" id="workRegion" value={formData.workRegion || ''} onChange={handleChange} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600">
+                                        <option value="">-- Select Region --</option>
+                                        {Object.keys(geographicalData).sort().map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="workCounty" className="block text-sm font-medium mb-1">Work County</label>
+                                    <select name="workCounty" id="workCounty" value={formData.workCounty || ''} onChange={handleChange} disabled={!formData.workRegion} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
+                                        <option value="">-- Select County --</option>
+                                        {workCountiesForSelect.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="workSubCounty" className="block text-sm font-medium mb-1">Work Sub-County</label>
+                                    <select name="workSubCounty" id="workSubCounty" value={formData.workSubCounty || ''} onChange={handleChange} disabled={!formData.workCounty} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600 disabled:opacity-70">
+                                        <option value="">-- Select Sub-County --</option>
+                                        {workSubCountiesForSelect.map(sc => <option key={sc} value={sc}>{sc}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </fieldset>
+                    )}
+
+
+                    <div className="flex justify-end gap-4 pt-4">
+                        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+                        <Button type="submit" disabled={!!validationError}>
+                            {userToEdit || formData.id ? 'Save Changes' : 'Create User'}
+                        </Button>
+                    </div>
+                </form>
+            )}
         </Modal>
     );
 };
@@ -478,7 +553,7 @@ export const UserManagementPage: React.FC = () => {
     const [judgeFilter, setJudgeFilter] = useState<'all' | 'active'>('all');
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const tableContainerRef = useRef<HTMLDivElement>(null);
-    
+
     useEffect(() => {
         const queryParams = new URLSearchParams(location.search);
         const filter = queryParams.get('filter');
@@ -495,23 +570,23 @@ export const UserManagementPage: React.FC = () => {
 
     const canManageAssignments = useMemo(() => {
         if (!currentUser) return false;
-    
+
         const levelOrder = [CompetitionLevel.SUB_COUNTY, CompetitionLevel.COUNTY, CompetitionLevel.REGIONAL, CompetitionLevel.NATIONAL];
         const isViewingPastLevel = levelOrder.indexOf(viewingLevel) < levelOrder.indexOf(overallHighestLevel);
         if (isViewingPastLevel) return false;
-        
+
         if (currentUser.currentRole === UserRole.SUPER_ADMIN) return true;
-    
+
         const roleToLevelMap: { [key in UserRole]?: CompetitionLevel } = {
             [UserRole.SUB_COUNTY_ADMIN]: CompetitionLevel.SUB_COUNTY,
             [UserRole.COUNTY_ADMIN]: CompetitionLevel.COUNTY,
             [UserRole.REGIONAL_ADMIN]: CompetitionLevel.REGIONAL,
             [UserRole.NATIONAL_ADMIN]: CompetitionLevel.NATIONAL,
         };
-        
+
         const expectedLevel = roleToLevelMap[currentUser.currentRole];
         return expectedLevel === viewingLevel;
-    
+
     }, [currentUser, viewingLevel, overallHighestLevel]);
 
     const activeJudgeIdsForLevel = useMemo(() => {
@@ -520,7 +595,7 @@ export const UserManagementPage: React.FC = () => {
         if (isViewingPastLevel) {
             return new Set<string>();
         }
-        
+
         const activeIds = new Set<string>();
         const activeJudgeAssignments = assignments.filter(a => !a.isArchived);
         const projectsForAssignments = projects.filter(p => p.currentLevel === viewingLevel);
@@ -557,9 +632,9 @@ export const UserManagementPage: React.FC = () => {
                     switch (roleFilter) {
                         case 'ADMINS': return u.roles.some(r => ADMIN_ROLES.includes(r));
                         case 'JUDGES':
-                             if (!u.roles.some(r => JUDGE_ROLES.includes(r))) return false;
-                             if (judgeFilter === 'all') return true;
-                             return activeJudgeIdsForLevel.has(u.id);
+                            if (!u.roles.some(r => JUDGE_ROLES.includes(r))) return false;
+                            if (judgeFilter === 'all') return true;
+                            return activeJudgeIdsForLevel.has(u.id);
                         case 'PATRONS': return u.roles.includes(UserRole.PATRON) && activePatronIds.has(u.id);
                         default: return true;
                     }
@@ -577,7 +652,7 @@ export const UserManagementPage: React.FC = () => {
                 if (userHighestRoleLevel < currentUserLevel) {
                     return false;
                 }
-                
+
                 const search = searchTerm.toLowerCase();
                 const matchesSearch = u.name.toLowerCase().includes(search) || u.email.toLowerCase().includes(search);
                 if (!matchesSearch) return false;
@@ -597,7 +672,7 @@ export const UserManagementPage: React.FC = () => {
                     case UserRole.SUB_COUNTY_ADMIN:
                         isInGeoScope = targetUserWorkSubCounty === currentUser.subCounty && targetUserWorkCounty === currentUser.county && targetUserWorkRegion === currentUser.region;
                         break;
-                    default: 
+                    default:
                         isInGeoScope = true;
                         break;
                 }
@@ -624,21 +699,21 @@ export const UserManagementPage: React.FC = () => {
             })
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [users, currentUser, searchTerm, roleFilter, projects, viewingLevel, assignments, judgeFilter, activeJudgeIdsForLevel]);
-    
+
     const usersWithDetails = useMemo(() => {
         return filteredUsers.map(user => {
             const isJudgeOrCoordinator = user.roles.some(r => JUDGE_ROLES.includes(r));
             if (!isJudgeOrCoordinator) {
                 return { user, assignmentsSummary: [], progress: { total: 0, completed: 0, percentage: 0 } };
             }
-    
+
             // 1. Get assignments for this user at the current viewing level
             const assignmentsForLevel = assignments.filter(a => {
                 if (a.judgeId !== user.id || a.isArchived) return false;
                 const project = projects.find(p => p.id === a.projectId);
                 return project && project.currentLevel === viewingLevel;
             });
-    
+
             // 2. Summarize assignments by category
             const summary = new Map<string, Set<string>>();
             for (const assignment of assignmentsForLevel) {
@@ -654,12 +729,12 @@ export const UserManagementPage: React.FC = () => {
                 category,
                 sections: Array.from(sections).sort()
             }));
-    
+
             // 3. Calculate progress
             const total = assignmentsForLevel.length;
             const completed = assignmentsForLevel.filter(a => a.status === ProjectStatus.COMPLETED).length;
             const percentage = total > 0 ? (completed / total) * 100 : 0;
-            
+
             return {
                 user,
                 assignmentsSummary,
@@ -680,7 +755,7 @@ export const UserManagementPage: React.FC = () => {
             setSelectedUsers(new Set());
         }
     };
-    
+
     const handleSelectUser = (userId: string) => {
         setSelectedUsers(prev => {
             const newSet = new Set(prev);
@@ -702,7 +777,7 @@ export const UserManagementPage: React.FC = () => {
         setUserToEdit(user);
         setIsAddEditModalOpen(true);
     };
-    
+
     const handleManageAssignments = (user: User) => {
         setUserToManage(user);
         setIsAssignmentsModalOpen(true);
@@ -718,7 +793,7 @@ export const UserManagementPage: React.FC = () => {
         }
         setConfirmDeleteState({ isOpen: false, user: null });
     };
-    
+
     const handleBulkDelete = () => {
         const usersToDelete = filteredUsers.filter(u => selectedUsers.has(u.id));
         setConfirmBulkDeleteState({ isOpen: true, users: usersToDelete });
@@ -731,13 +806,13 @@ export const UserManagementPage: React.FC = () => {
         setConfirmBulkDeleteState({ isOpen: false, users: [] });
         setSelectedUsers(new Set());
     };
-    
+
     const handleBulkRoleAssign = () => {
         setIsBulkRoleModalOpen(true);
     };
 
     const getRoleChipClass = (role: UserRole) => {
-        switch(role) {
+        switch (role) {
             case UserRole.SUPER_ADMIN: return "bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200";
             case UserRole.NATIONAL_ADMIN: return "bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200";
             case UserRole.REGIONAL_ADMIN: return "bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200";
@@ -749,7 +824,7 @@ export const UserManagementPage: React.FC = () => {
             default: return "bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200";
         }
     };
-    
+
     const downloadUserListPDF = () => {
         const doc = new jsPDF();
         doc.setFontSize(18);
@@ -771,7 +846,7 @@ export const UserManagementPage: React.FC = () => {
             body,
             theme: 'grid',
         });
-        
+
         doc.save('KSEF_User_List.pdf');
     };
 
@@ -794,7 +869,7 @@ export const UserManagementPage: React.FC = () => {
                         />
                     </div>
                     <div className="flex items-center gap-2">
-                         <Button onClick={handleAddUser} className="flex items-center gap-2">
+                        <Button onClick={handleAddUser} className="flex items-center gap-2">
                             <UserPlus className="w-4 h-4" /> Add User
                         </Button>
                         <Button variant="secondary" onClick={() => setIsBulkOpsModalOpen(true)} className="flex items-center gap-2">
@@ -882,12 +957,12 @@ export const UserManagementPage: React.FC = () => {
                                         ))}
                                     </div>
                                 </td>
-                                 <td className="px-4 py-3">
+                                <td className="px-4 py-3">
                                     <div className="flex flex-col gap-2">
                                         {user.school && <p className="font-semibold text-sm text-text-light dark:text-text-dark">{user.school}</p>}
                                         {assignmentsSummary.length > 0 && (
                                             <div className="flex flex-wrap gap-1">
-                                                {assignmentsSummary.map(({ category, sections }) => 
+                                                {assignmentsSummary.map(({ category, sections }) =>
                                                     sections.map(section => (
                                                         <span key={`${category}-${section}`} className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200">
                                                             {category} {section.replace('Part ', '')}
@@ -918,9 +993,9 @@ export const UserManagementPage: React.FC = () => {
                                     </td>
                                 )}
                                 <td className="px-4 py-3 text-center">
-                                     <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => { setUserToManage(user); setIsViewProfileModalOpen(true); }} title="View Profile" className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><Eye className="w-4 h-4 text-primary"/></button>
-                                        <button onClick={() => handleEditUser(user)} title="Edit User" className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><Edit className="w-4 h-4 text-blue-500"/></button>
+                                    <div className="flex items-center justify-center gap-1">
+                                        <button onClick={() => { setUserToManage(user); setIsViewProfileModalOpen(true); }} title="View Profile" className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><Eye className="w-4 h-4 text-primary" /></button>
+                                        <button onClick={() => handleEditUser(user)} title="Edit User" className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><Edit className="w-4 h-4 text-blue-500" /></button>
                                         {(user.roles.includes(UserRole.JUDGE) || user.roles.includes(UserRole.COORDINATOR)) && (
                                             <button onClick={() => handleManageAssignments(user)} title={canManageAssignments ? "Manage Assignments" : "You can only manage assignments for your specific competition level."} disabled={!canManageAssignments} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"><Settings className="w-4 h-4 text-green-500" /></button>
                                         )}
@@ -931,7 +1006,7 @@ export const UserManagementPage: React.FC = () => {
                         ))}
                     </tbody>
                 </table>
-                 {usersWithDetails.length === 0 && (
+                {usersWithDetails.length === 0 && (
                     <div className="text-center py-10 text-text-muted-light dark:text-text-muted-dark">
                         <p>No users match the current filters.</p>
                     </div>
@@ -939,7 +1014,7 @@ export const UserManagementPage: React.FC = () => {
             </div>
             {filteredUsers.length > 0 && (
                 <div className="flex justify-end mt-4">
-                     <Button variant="secondary" onClick={downloadUserListPDF} className="flex items-center gap-2">
+                    <Button variant="secondary" onClick={downloadUserListPDF} className="flex items-center gap-2">
                         <FileDown className="w-4 h-4" /> Download List (PDF)
                     </Button>
                 </div>

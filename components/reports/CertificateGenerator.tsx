@@ -60,7 +60,7 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
     let nameColor = '#007EA7';
     let borderColor = '#003459';
     let accentColor = '#64FFDA';
-    
+
     // Special styling for national level winners
     if (levelFrom === CompetitionLevel.NATIONAL && isWinner) {
         // Gold for 1st place, Silver for 2nd, Bronze for 3rd
@@ -150,14 +150,14 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
     doc.setFontSize(14);
     doc.setTextColor(borderColor);
     doc.text(`${editionName} - ${competitionTitle} LEVEL`, pageWidth / 2, 35, { align: 'center' });
-    
+
     // Add the logo
     const logoMaxWidth = 30;
     const logoMaxHeight = 30;
-    
+
     try {
         // Create a promise that resolves with the image data URL
-        const loadImage = (src: string): Promise<{dataUrl: string, width: number, height: number}> => {
+        const loadImage = (src: string): Promise<{ dataUrl: string, width: number, height: number }> => {
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 img.crossOrigin = 'Anonymous';
@@ -181,15 +181,15 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
                 img.src = src;
             });
         };
-        
+
         // Load and convert the PNG logo to data URL
         const logoInfo = await loadImage(KSEF_LOGO_PATH);
-        
+
         // Calculate dimensions maintaining aspect ratio
         const aspectRatio = logoInfo.width / logoInfo.height;
         let displayWidth = logoMaxWidth;
         let displayHeight = logoMaxHeight;
-        
+
         if (aspectRatio > 1) {
             // Width is greater than height (landscape)
             displayHeight = logoMaxWidth / aspectRatio;
@@ -197,23 +197,23 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
             // Height is greater than or equal to width (portrait or square)
             displayWidth = logoMaxHeight * aspectRatio;
         }
-        
+
         // Center the logo
         const xPos = (pageWidth / 2) - (displayWidth / 2);
-        
+
         doc.addImage(logoInfo.dataUrl, 'PNG', xPos, 42, displayWidth, displayHeight);
     } catch (error) {
         console.error("Failed to add logo image:", error);
         // Fallback: If logo fails to load, we'll skip it rather than break the certificate
     }
 
-    let yPos = 85; 
+    let yPos = 85;
     doc.setFont('times', 'normal');
     doc.setFontSize(32);
     doc.setTextColor('#34495e');
     doc.text(certTitle, pageWidth / 2, yPos, { align: 'center' });
     yPos += 12;
-    
+
     doc.setFontSize(16);
     doc.text('This is to certify that', pageWidth / 2, yPos, { align: 'center' });
     yPos += 14;
@@ -223,7 +223,7 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
     doc.setTextColor(nameColor);
     doc.text(name, pageWidth / 2, yPos, { align: 'center' });
     yPos += 8;
-    
+
     if ((type === 'Patron' || type === 'Judge') && (tscNumber || idNumber)) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
@@ -232,7 +232,7 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
             tscNumber ? `TSC No: ${tscNumber}` : '',
             idNumber ? `ID No: ${idNumber}` : ''
         ].filter(Boolean).join('   |   ');
-        
+
         doc.text(detailsLine, pageWidth / 2, yPos, { align: 'center' });
         yPos += 6;
     }
@@ -334,26 +334,9 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
         yPos += (textLines.length * 5) + 5; // Adjust yPos based on number of lines
     }
 
-    if (type === 'School' && projectsList && projectsList.length > 0) {
-        doc.setFont('times', 'bold');
-        doc.setFontSize(14);
-        doc.setTextColor('#003459');
-        if (yPos > pageHeight - 90) { doc.addPage(); yPos = 20; }
-        doc.text('Projects Covered', pageWidth / 2, yPos, { align: 'center' });
-        yPos += 8;
-
-        doc.setFont('times', 'normal');
-        doc.setFontSize(12);
-        doc.setTextColor('#34495e');
-        const bullets = projectsList.map(p => `• ${p}`);
-        const lines = doc.splitTextToSize(bullets.join('\n'), pageWidth - 80);
-        doc.text(lines, pageWidth / 2, yPos, { align: 'center' });
-        yPos += (lines.length * 5) + 5;
-    }
-
     // --- DYNAMIC FOOTER ---
     const finalContentY = yPos;
-    const minimumSignatureY = pageHeight - 70; 
+    const minimumSignatureY = pageHeight - 70;
     const signatureY = Math.max(finalContentY + 10, minimumSignatureY);
 
     const signatureLineY = signatureY + 10;
@@ -362,11 +345,11 @@ export const addCertificatePage = async ({ doc, name, type, projectTitle, school
     doc.setFontSize(12);
     doc.setTextColor('#34495e');
     doc.text(`Date: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth / 2, signatureY, { align: 'center' });
-    
+
     doc.setFontSize(10);
     doc.setLineWidth(0.3);
     doc.setDrawColor(borderColor);
-    
+
     // Signature 1
     doc.line(pageWidth * 0.15, signatureLineY, pageWidth * 0.45, signatureLineY);
     doc.text(signatory1, pageWidth * 0.3, signatureLabelY, { align: 'center' });

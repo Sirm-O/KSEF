@@ -289,46 +289,46 @@ const CertificatesPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Certificates</h2>
         {isLevelPublished ? (
-          <span className="text-sm text-green-600 flex items-center gap-1"><ShieldCheck className="w-4 h-4"/> Available for selected level</span>
+          <span className="text-sm text-green-600 flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> Available for selected level</span>
         ) : (
-          <span className="text-sm text-yellow-600 flex items-center gap-1"><Award className="w-4 h-4"/> Available after publishing results</span>
+          <span className="text-sm text-yellow-600 flex items-center gap-1"><Award className="w-4 h-4" /> Available after publishing results</span>
         )}
       </div>
 
       <Card>
         <div className="flex flex-wrap gap-2">
-          <LevelButton value={CompetitionLevel.SUB_COUNTY} icon={<BookOpen className="w-4 h-4"/>} />
-          <LevelButton value={CompetitionLevel.COUNTY} icon={<BookOpen className="w-4 h-4"/>} />
-          <LevelButton value={CompetitionLevel.REGIONAL} icon={<BookOpen className="w-4 h-4"/>} />
-          <LevelButton value={CompetitionLevel.NATIONAL} icon={<Trophy className="w-4 h-4"/>} />
+          <LevelButton value={CompetitionLevel.SUB_COUNTY} icon={<BookOpen className="w-4 h-4" />} />
+          <LevelButton value={CompetitionLevel.COUNTY} icon={<BookOpen className="w-4 h-4" />} />
+          <LevelButton value={CompetitionLevel.REGIONAL} icon={<BookOpen className="w-4 h-4" />} />
+          <LevelButton value={CompetitionLevel.NATIONAL} icon={<Trophy className="w-4 h-4" />} />
         </div>
       </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 font-semibold"><School className="w-5 h-5"/> School Bundle</div>
+            <div className="flex items-center gap-2 font-semibold"><School className="w-5 h-5" /> School Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">All school certificates for projects at the selected level.</p>
             <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('School')}>Download</Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5"/> Patron Bundle</div>
+            <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5" /> Patron Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Patron certificates for each project at the selected level.</p>
             <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('Patron')}>Download</Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5"/> Students Bundle</div>
+            <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5" /> Students Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Certificates for all students across the selected level.</p>
             <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('Students')}>Download</Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 font-semibold"><BookOpen className="w-5 h-5"/> Judges Bundle</div>
+            <div className="flex items-center gap-2 font-semibold"><BookOpen className="w-5 h-5" /> Judges Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Certificates for judges who evaluated your projects at this level.</p>
             <Button disabled={!isLevelPublished} onClick={() => handleDownloadBundle('Judges')}>Download</Button>
           </div>

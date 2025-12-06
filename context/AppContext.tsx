@@ -1,8 +1,9 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { User, Project, JudgeAssignment, ProjectStatus, SchoolLocation, UserRole, RankingData, CompetitionLevel, AuditLog, JudgingDetails, CategoryStats, ProjectWithRank, RankedEntity, Edition } from '../types';
 import { KENYAN_GEOGRAPHICAL_DATA, SCORE_SHEET, ROBOTICS_SCORE_SHEET } from '../constants';
-import { supabase } from '../supabaseClient';
-import { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../supabaseClient';
+import { AuthChangeEvent, Session, createClient } from '@supabase/supabase-js';
+import emailjs from '@emailjs/browser';
 import { GoogleGenAI } from '@google/genai';
 
 // --- NEW HELPER ---
@@ -1493,16 +1494,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     };
 
-    const addUserToList = async (newUser: Omit<User, 'id'>) => {
-        if (!user) return;
+    const addUserToList = async (newUser: Omit<User, 'id'>, onStatusChange?: (status: string, progress: number) => void) => {
+        if (!user) return { success: false, message: 'User not logged in' };
         setIsPerformingBackgroundTask(true);
+        if (onStatusChange) onStatusChange('Initializing...', 10);
+
         try {
             const { data: { session: adminSession } } = await supabase.auth.getSession();
             if (!adminSession) {
                 showNotification('Your session has expired. Please log in again.', 'error');
-                return;
+                return { success: false, message: 'Session expired' };
             }
 
+            if (onStatusChange) onStatusChange('Creating User Account...', 30);
             const password = generateRandomPassword();
 
             const userPayload: Omit<User, 'id'> & { currentRole: UserRole } = {
@@ -1510,7 +1514,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 currentRole: (newUser as Partial<User>).currentRole || getPrimaryRole(newUser.roles),
             };
 
-            const { data, error } = await supabase.auth.signUp({
+            // Use temp client to prevent admin logout
+            const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+                auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+            });
+
+            const { data, error } = await tempSupabase.auth.signUp({
                 email: userPayload.email,
                 password: password,
                 options: {
@@ -1524,7 +1533,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             if (error) {
                 showNotification(`Error creating user: ${error.message}`, 'error');
+                return { success: false, message: error.message };
             } else if (data.user) {
+                if (onStatusChange) onStatusChange('Saving User Profile...', 60);
                 const profileToUpsert = {
                     id: data.user.id,
                     ...mapUserToProfile(userPayload),
@@ -1539,19 +1550,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     console.error("CRITICAL: Auth user created but profile upsert failed:", profileError);
                     showNotification(`User auth created, but profile creation failed: ${profileError.message}`, 'error');
                 } else {
+                    // EmailJS
+                    if (onStatusChange) onStatusChange('Sending Welcome Email...', 80);
+                    const emailParams = {
+                        to_name: userPayload.name,
+                        to_email: userPayload.email,
+                        initial_password: password,
+                    };
+
+                    try {
+                        await emailjs.send('service_26hg3x5', 'template_jx9e8gp', emailParams, '1VMHXrjuEgquBbN4B');
+                        console.log('EMAIL SUCCESS!');
+                    } catch (err: any) {
+                        console.error('EMAIL FAILED...', err);
+                    }
+
+                    if (onStatusChange) onStatusChange('Process Completed Successfully', 100);
                     showNotification(`User ${userPayload.name} created successfully.`, 'success');
                     await fetchAllData(user);
+                    return { success: true, password: password, message: 'User created successfully' };
                 }
             }
-
-            const { error: setSessionError } = await supabase.auth.setSession({
-                access_token: adminSession.access_token,
-                refresh_token: adminSession.refresh_token,
-            });
-            if (setSessionError) {
-                showNotification('Session restoration failed. Please refresh the page.', 'warning');
-                console.error('Failed to restore admin session:', setSessionError);
-            }
+            return { success: false, message: 'Unknown error occurred' };
         } finally {
             setIsPerformingBackgroundTask(false);
         }
@@ -1559,19 +1579,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const bulkCreateOrUpdateUsers = useCallback(async (
         usersToCreate: Omit<User, 'id'>[],
-        usersToUpdate: User[]
+        usersToUpdate: User[],
+        onProgress?: (progress: { current: number; total: number; task: string }) => void
     ) => {
         if (!user) {
             showNotification('Current user not found. Please log in again.', 'error');
             return;
         }
         const totalOps = usersToCreate.length + usersToUpdate.length;
-        if (totalOps === 0) {
-            return;
-        }
+        if (totalOps === 0) return;
+
+        // Isolated client
+        const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
 
         setIsPerformingBackgroundTask(true);
-        setBulkTaskProgress({ current: 0, total: totalOps, task: 'Processing Users' });
+        if (onProgress) {
+            onProgress({ current: 0, total: totalOps, task: 'Processing Users' });
+        } else {
+            setBulkTaskProgress({ current: 0, total: totalOps, task: 'Processing Users' });
+        }
 
         try {
             const { data: { session: adminSession } } = await supabase.auth.getSession();
@@ -1584,10 +1612,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             let successCount = 0;
             let failCount = 0;
 
-            // Process creations
             for (const newUser of usersToCreate) {
+                const stepPrefix = `User ${completedOps + 1}/${totalOps}:`;
+
+                if (onProgress) onProgress({ current: completedOps, total: totalOps, task: `${stepPrefix} Creating Account for ${newUser.name}...` });
+
                 const password = generateRandomPassword();
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await tempSupabase.auth.signUp({
                     email: newUser.email,
                     password: password,
                     options: {
@@ -1598,25 +1629,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         }
                     }
                 });
+
                 if (error) {
                     failCount++;
                     console.error(`Failed to create auth for ${newUser.email}: ${error.message}`);
+                    if (onProgress) onProgress({ current: completedOps, total: totalOps, task: `${stepPrefix} Failed: ${error.message}` });
                 } else if (data.user) {
+                    if (onProgress) onProgress({ current: completedOps, total: totalOps, task: `${stepPrefix} Saving Profile...` });
+
                     const profileToUpsert = { id: data.user.id, ...mapUserToProfile(newUser), initial_password: password, force_password_change: true };
+                    // Upsert profile using ADMIN session (main supabase)
                     const { error: profileError } = await supabase.from('profiles').upsert(profileToUpsert, { onConflict: 'id' });
                     if (profileError) {
                         failCount++;
                         console.error(`Failed to upsert profile for ${newUser.email}: ${profileError.message}`);
                     } else {
+                        // EmailJS
+                        if (onProgress) onProgress({ current: completedOps, total: totalOps, task: `${stepPrefix} Sending Email...` });
+                        const emailParams = {
+                            to_name: newUser.name,
+                            to_email: newUser.email,
+                            initial_password: password,
+                        };
+                        try {
+                            await emailjs.send('service_26hg3x5', 'template_jx9e8gp', emailParams, '1VMHXrjuEgquBbN4B');
+                        } catch (emailErr) {
+                            console.error(`EMAIL FAILED for ${newUser.email}`, emailErr);
+                        }
                         successCount++;
                     }
                 }
                 completedOps++;
-                setBulkTaskProgress({ current: completedOps, total: totalOps, task: 'Processing Users' });
+                const progressUpdate = { current: completedOps, total: totalOps, task: `Completed ${newUser.name}` };
+                if (onProgress) onProgress(progressUpdate);
+                else setBulkTaskProgress(progressUpdate);
             }
 
-            // Process updates
             for (const userToUpdate of usersToUpdate) {
+                const stepPrefix = `User ${completedOps + 1}/${totalOps}:`;
+                if (onProgress) onProgress({ current: completedOps, total: totalOps, task: `${stepPrefix} Updating ${userToUpdate.name}...` });
+
                 const { error } = await supabase.from('profiles').update(mapUserToProfile(userToUpdate)).eq('id', userToUpdate.id);
                 if (error) {
                     failCount++;
@@ -1625,30 +1677,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     successCount++;
                 }
                 completedOps++;
-                setBulkTaskProgress({ current: completedOps, total: totalOps, task: 'Processing Users' });
+                const progressUpdate = { current: completedOps, total: totalOps, task: `Updated ${userToUpdate.name}` };
+                if (onProgress) onProgress(progressUpdate);
+                else setBulkTaskProgress(progressUpdate);
             }
 
-            // Restore session
-            const { error: setSessionError } = await supabase.auth.setSession({
-                access_token: adminSession.access_token,
-                refresh_token: adminSession.refresh_token,
-            });
-            if (setSessionError) {
-                showNotification('Session restoration failed. Please refresh the page.', 'warning');
-            }
+            if (onProgress) onProgress({ current: totalOps, total: totalOps, task: 'Finalizing...' });
 
-            // Final notification
+
             let message = '';
             if (successCount > 0) message += `${successCount} users processed successfully. `;
             if (failCount > 0) message += `${failCount} users failed. Check console for details.`;
             showNotification(message, failCount > 0 ? 'warning' : 'success', 8000);
 
-            // Single refresh at the end
             await fetchAllData(user);
 
+        } catch (error) {
+            console.error('Bulk operation failed:', error);
+            showNotification('An unexpected error occurred during bulk operation', 'error');
         } finally {
             setIsPerformingBackgroundTask(false);
-            setBulkTaskProgress(null);
+            if (!onProgress) setBulkTaskProgress(null);
         }
     }, [user, fetchAllData, showNotification]);
 
