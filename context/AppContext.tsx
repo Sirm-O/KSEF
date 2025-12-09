@@ -152,7 +152,7 @@ interface IAppContext {
     generateCertificateDesigns: (prompt: string) => Promise<string[]>; // --- NEW ---
     saveCertificateDesign: (designBase64: string) => Promise<void>; // --- NEW ---
     removeCertificateDesign: () => Promise<void>; // --- NEW ---
-    login: (email: string, password: string) => Promise<{ error: string | null }>;
+    login: (identifier: string, password: string) => Promise<{ error: string | null }>;
     logout: () => Promise<void>;
     switchRole: (newRole: UserRole) => Promise<void>;
     toggleTheme: () => void;
@@ -1217,8 +1217,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     }, [user, activeEdition, editions, showNotification, fetchAllData]);
 
-    const login = async (email: string, password: string) => {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const login = async (identifier: string, password: string) => {
+        // Detect if identifier is an email or phone number
+        const isEmail = identifier.includes('@');
+
+        let emailToUse = identifier;
+
+        // If it's a phone number, lookup the associated email
+        if (!isEmail) {
+            // Normalize phone number to match database format (0XXXXXXXXX)
+            let normalizedPhone = identifier.trim().replace(/[\s\-()]/g, ''); // Remove spaces, dashes, parentheses
+
+            // Handle international format: +254XXXXXXXXX -> 0XXXXXXXXX
+            if (normalizedPhone.startsWith('+254')) {
+                normalizedPhone = '0' + normalizedPhone.substring(4);
+            } else if (normalizedPhone.startsWith('254')) {
+                normalizedPhone = '0' + normalizedPhone.substring(3);
+            }
+
+            // Validate format (should be 10 digits starting with 0)
+            if (!/^0\d{9}$/.test(normalizedPhone)) {
+                return { error: 'Invalid phone number format. Please use format: 0XXXXXXXXX (10 digits starting with 0)' };
+            }
+
+            // Query the profiles table to find user by phone number
+            const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('email')
+                .eq('phone_number', normalizedPhone)
+                .single();
+
+            if (profileError || !profileData) {
+                return { error: 'Phone number not found. Please check and try again.' };
+            }
+
+            emailToUse = profileData.email;
+        }
+
+        // Authenticate using email
+        const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
         return { error: error ? error.message : null };
     };
 
