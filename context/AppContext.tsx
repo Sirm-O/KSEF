@@ -375,21 +375,47 @@ const getDeadlineKeyForAdmin = (admin: User): string => {
     }
 };
 
-const getApplicableDeadline = (scope: { region?: string; county?: string; subCounty?: string }, allDeadlines: Record<string, string>): string | null => {
+const getApplicableDeadline = (user: User, allDeadlines: Record<string, string>): string | null => {
     const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
-    if (scope.subCounty) {
-        const subCountyKey = `submission_deadline_subcounty_${formatForKy(scope.subCounty)}`;
-        if (allDeadlines[subCountyKey]) return allDeadlines[subCountyKey];
+
+    // Prepare keys
+    const regionKey = user.region ? `submission_deadline_region_${formatForKy(user.region)}` : null;
+    const countyKey = user.county ? `submission_deadline_county_${formatForKy(user.county)}` : null;
+    const subCountyKey = user.subCounty ? `submission_deadline_subcounty_${formatForKy(user.subCounty)}` : null;
+    const nationalKey = 'submission_deadline';
+
+    // Role-based hierarchy
+    switch (user.currentRole) {
+        case UserRole.REGIONAL_ADMIN:
+            // Admin sees their Region's deadline, falling back to National
+            if (regionKey && allDeadlines[regionKey]) return allDeadlines[regionKey];
+            return allDeadlines[nationalKey] || null;
+
+        case UserRole.COUNTY_ADMIN:
+            // Admin sees their County's deadline, falling back to Region -> National
+            if (countyKey && allDeadlines[countyKey]) return allDeadlines[countyKey];
+            if (regionKey && allDeadlines[regionKey]) return allDeadlines[regionKey];
+            return allDeadlines[nationalKey] || null;
+
+        case UserRole.SUB_COUNTY_ADMIN:
+            // Admin sees their Sub-County deadline, falling back to County -> Region -> National
+            if (subCountyKey && allDeadlines[subCountyKey]) return allDeadlines[subCountyKey];
+            if (countyKey && allDeadlines[countyKey]) return allDeadlines[countyKey];
+            if (regionKey && allDeadlines[regionKey]) return allDeadlines[regionKey];
+            return allDeadlines[nationalKey] || null;
+
+        case UserRole.PATRON:
+        case UserRole.JUDGE:
+        case UserRole.COORDINATOR:
+            // Standard users are subject to the most specific deadline available for their location
+            if (subCountyKey && allDeadlines[subCountyKey]) return allDeadlines[subCountyKey];
+            if (countyKey && allDeadlines[countyKey]) return allDeadlines[countyKey];
+            if (regionKey && allDeadlines[regionKey]) return allDeadlines[regionKey];
+            return allDeadlines[nationalKey] || null;
+
+        default: // National / Super Admin
+            return allDeadlines[nationalKey] || null;
     }
-    if (scope.county) {
-        const countyKey = `submission_deadline_county_${formatForKy(scope.county)}`;
-        if (allDeadlines[countyKey]) return allDeadlines[countyKey];
-    }
-    if (scope.region) {
-        const regionKey = `submission_deadline_region_${formatForKy(scope.region)}`;
-        if (allDeadlines[regionKey]) return allDeadlines[regionKey];
-    }
-    return allDeadlines['submission_deadline'] || null;
 };
 
 const getTimerScopePrefix = (scope: { region?: string; county?: string; subCounty?: string; }): string => {

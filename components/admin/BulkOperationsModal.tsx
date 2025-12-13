@@ -4,6 +4,7 @@ import Button from '../ui/Button';
 import { AppContext } from '../../context/AppContext';
 import { User, UserRole } from '../../types';
 import { CheckCircle, XCircle, Loader, FileText, Download, Upload, UserCheck, UserPlus } from 'lucide-react';
+import { saveCsvOrText } from '../../utils/downloadUtils';
 
 type ParsedUser = {
     data: { [key: string]: string };
@@ -75,7 +76,7 @@ const BulkOperationsModal: React.FC<{ isOpen: boolean; onClose: () => void; }> =
 
     const validUsers = useMemo(() => parsedUsers.filter(u => u.status.startsWith('valid')), [parsedUsers]);
 
-    const downloadTemplate = useCallback(() => {
+    const downloadTemplate = useCallback(async () => {
         if (headers.length === 0) return;
 
         let exampleData: string[] = [];
@@ -109,15 +110,9 @@ const BulkOperationsModal: React.FC<{ isOpen: boolean; onClose: () => void; }> =
         const csvHeader = headers.join(',');
         const csvExamples = exampleData.join('\n');
         const csvContent = `${csvHeader}\n${csvExamples}`;
-
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
         const filename = activeTab === 'judges' ? 'judges_coordinators_template.csv' : `admins_${adminRoleToCreate.replace(' ', '_')}_template.csv`;
-        link.setAttribute('href', URL.createObjectURL(blob));
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+
+        await saveCsvOrText(csvContent, filename);
     }, [headers, activeTab, adminRoleToCreate, currentUser]);
 
     const parseCSV = useCallback((csvText: string) => {

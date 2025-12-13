@@ -24,29 +24,38 @@ const checkAssignmentPermission = (admin: User, judge: User): { allowed: boolean
     }
 
     const requiredAdminRole = getAdminLevelForJudge(judge);
-    
+
     if (admin.currentRole !== requiredAdminRole) {
         const roleName = requiredAdminRole.replace(' Admin', '');
         return { allowed: false, message: `This judge must be assigned by a ${roleName} Admin.` };
     }
 
     // Now check if they are the *correct* admin for that level
-    switch(admin.currentRole) {
-        case UserRole.SUB_COUNTY_ADMIN:
-            if (admin.workSubCounty !== judge.workSubCounty || admin.workCounty !== judge.workCounty || admin.workRegion !== judge.workRegion) {
+    switch (admin.currentRole) {
+        case UserRole.SUB_COUNTY_ADMIN: {
+            const adminSubCounty = admin.workSubCounty || admin.subCounty;
+            const adminCounty = admin.workCounty || admin.county;
+            const adminRegion = admin.workRegion || admin.region;
+            if (adminSubCounty !== judge.workSubCounty || adminCounty !== judge.workCounty || adminRegion !== judge.workRegion) {
                 return { allowed: false, message: `You are not the admin for the '${judge.workSubCounty}' sub-county.` };
             }
             break;
-        case UserRole.COUNTY_ADMIN:
-             if (admin.workCounty !== judge.workCounty || admin.workRegion !== judge.workRegion) {
+        }
+        case UserRole.COUNTY_ADMIN: {
+            const adminCounty = admin.workCounty || admin.county;
+            const adminRegion = admin.workRegion || admin.region;
+            if (adminCounty !== judge.workCounty || adminRegion !== judge.workRegion) {
                 return { allowed: false, message: `You are not the admin for the '${judge.workCounty}' county.` };
             }
             break;
-        case UserRole.REGIONAL_ADMIN:
-             if (admin.workRegion !== judge.workRegion) {
+        }
+        case UserRole.REGIONAL_ADMIN: {
+            const adminRegion = admin.workRegion || admin.region;
+            if (adminRegion !== judge.workRegion) {
                 return { allowed: false, message: `You are not the admin for the '${judge.workRegion}' region.` };
             }
             break;
+        }
     }
 
     return { allowed: true, message: '' };
@@ -61,11 +70,11 @@ interface JudgeCategoryAssignmentModalProps {
 }
 
 const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> = ({ isOpen, onClose, judge }) => {
-    const { 
+    const {
         user,
         users,
-        projects, 
-        assignments, 
+        projects,
+        assignments,
         viewingLevel,
         assignJudgeToSectionForLevel,
         unassignJudgeFromSectionForLevel,
@@ -77,7 +86,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
     const [selectedCategory, setSelectedCategory] = useState('');
     const [selectedSection, setSelectedSection] = useState<Section>('Part A');
     const [error, setError] = useState('');
-    
+
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
         title: string;
@@ -90,19 +99,19 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
     const canManage = useMemo(() => {
         if (!user) return false;
         if (user.currentRole === UserRole.SUPER_ADMIN) return true;
-    
+
         const roleToLevelMap: { [key in UserRole]?: CompetitionLevel } = {
             [UserRole.SUB_COUNTY_ADMIN]: CompetitionLevel.SUB_COUNTY,
             [UserRole.COUNTY_ADMIN]: CompetitionLevel.COUNTY,
             [UserRole.REGIONAL_ADMIN]: CompetitionLevel.REGIONAL,
             [UserRole.NATIONAL_ADMIN]: CompetitionLevel.NATIONAL,
         };
-        
+
         const expectedLevel = roleToLevelMap[user.currentRole];
         return expectedLevel === viewingLevel;
-    
+
     }, [user, viewingLevel]);
-    
+
     const judgeAssignmentSummary: Record<string, Set<Section>> = useMemo(() => {
         if (!judge) return {};
 
@@ -140,15 +149,15 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             setConfirmState(null);
         }
     }, [isOpen]);
-    
+
     const checkCoordinatorExists = (category: string, excludeJudgeId?: string): { exists: boolean, name?: string } => {
         const projectsInCategory = projects.filter(p => p.category === category && p.currentLevel === viewingLevel);
         if (projectsInCategory.length === 0) return { exists: false };
-        
+
         const projectIdsInCategory = new Set(projectsInCategory.map(p => p.id));
-        
-        const assignmentsForCategory = assignments.filter(a => 
-            projectIdsInCategory.has(a.projectId) && 
+
+        const assignmentsForCategory = assignments.filter(a =>
+            projectIdsInCategory.has(a.projectId) &&
             a.competitionLevel === viewingLevel &&
             !a.isArchived
         );
@@ -191,7 +200,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             setError('Please select a category.');
             return;
         }
-        
+
         if (!canAssignNewRole) {
             const coordinatorCategory = Object.entries(judgeAssignmentSummary).find(([_, sections]) => sections.size === 2)?.[0];
             const errorMessage = `Cannot assign new roles. This user is already the Coordinator for '${coordinatorCategory}' at this level.`;
@@ -239,7 +248,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                     const project = projects.find(p => p.id === a.projectId);
                     return project && project.category === selectedCategory && a.competitionLevel === viewingLevel && !a.isArchived;
                 });
-        
+
                 const assignmentsByJudge = new Map<string, Set<Section>>();
                 for (const assignment of assignmentsForCategory) {
                     if (!assignmentsByJudge.has(assignment.judgeId)) {
@@ -247,16 +256,16 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                     }
                     assignmentsByJudge.get(assignment.judgeId)!.add(assignment.assignedSection);
                 }
-                
+
                 const coordinatorIds = new Set<string>();
                 for (const [judgeId, sections] of assignmentsByJudge.entries()) {
                     if (sections.size === 2) coordinatorIds.add(judgeId);
                 }
-        
+
                 for (const project of projectsToAssign) {
                     const assignmentsForProjectSection = assignments.filter(a => a.projectId === project.id && a.assignedSection === selectedSection && a.competitionLevel === viewingLevel && !a.isArchived);
                     const regularJudgeIds = new Set(assignmentsForProjectSection.filter(a => !coordinatorIds.has(a.judgeId)).map(a => a.judgeId));
-        
+
                     if (!regularJudgeIds.has(judge.id) && regularJudgeIds.size >= 2) {
                         const existingJudges = users.filter(u => regularJudgeIds.has(u.id)).map(u => u.name).join(', ');
                         const errorMessage = `Cannot assign judge. Project "${project.title}" for ${selectedSection} is already fully assigned to: ${existingJudges}. A maximum of 2 regular judges are allowed.`;
@@ -266,18 +275,18 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                     }
                 }
             }
-            
+
             const result = await assignJudgeToSectionForLevel(judge.id, selectedCategory, selectedSection, viewingLevel);
             showNotification(result.message, result.success ? 'success' : 'error');
         }
-        
+
         setSelectedCategory('');
     };
 
     const handleAddSection = async (category: string, existingSections: Section[]) => {
         if (existingSections.length !== 1) return;
         if (!user) return;
-        
+
         const permission = checkAssignmentPermission(user, judge);
         if (!permission.allowed) {
             showNotification(permission.message, 'error', 8000);
@@ -288,9 +297,9 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             showNotification("Cannot promote to Coordinator. This user has assignments in other categories. Please remove other assignments first.", 'error', 8000);
             return;
         }
-        
+
         const sectionToAdd = existingSections[0] === 'Part A' ? 'Part B & C' : 'Part A';
-        
+
         const coordinatorCheck = checkCoordinatorExists(category, judge.id);
         if (coordinatorCheck.exists) {
             const errorMessage = `Cannot promote to coordinator. '${coordinatorCheck.name}' is already coordinating the '${category}' category for this level.`;
@@ -299,8 +308,8 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
         }
 
         const result = await assignJudgeToSectionForLevel(judge.id, category, sectionToAdd, viewingLevel);
-        
-        if(result.success) {
+
+        if (result.success) {
             const updatedRoles = Array.from(new Set([...judge.roles.filter(r => r !== UserRole.JUDGE), UserRole.COORDINATOR]));
             await updateUserInList({ ...judge, roles: updatedRoles, coordinatedCategory: category });
             showNotification(`Promoted ${judge.name} to Coordinator for '${category}'.`, 'success');
@@ -308,7 +317,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             showNotification(result.message, 'error');
         }
     };
-    
+
     const handleRemoveCategoryAssignments = (category: string) => {
         if (!user) return;
         const permission = checkAssignmentPermission(user, judge);
@@ -344,7 +353,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
 
                 const remainingAssignments = { ...judgeAssignmentSummary };
                 delete remainingAssignments[category];
-                
+
                 let isStillCoordinator = false;
                 for (const sections of Object.values(remainingAssignments)) {
                     if (sections.size === 2) {
@@ -360,7 +369,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                     await updateUserInList({ ...judge, roles: updatedRoles, coordinatedCategory: undefined });
                     showNotification(`${judge.name}'s role has been set to Judge.`, 'info');
                 }
-                
+
                 showNotification(`All assignments for '${category}' at the ${viewingLevel} level have been cleared for ${judge.name}.`, 'success');
                 setConfirmState(null);
             }
@@ -392,14 +401,14 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             showNotification(`Cannot unassign. ${judge.name} has already submitted scores for ${section} in the '${category}' category. Only a Super Admin can perform this action.`, 'error', 8000);
             return;
         }
-        
+
         setConfirmState({
             isOpen: true,
             title: "Confirm Section Removal",
             message: `Are you sure you want to unassign ${judge.name} from ${section} for the '${category}' category? ${hasSubmittedScore ? 'WARNING: This will remove their submitted scores. This action cannot be undone.' : ''}`,
             onConfirm: async () => {
                 await unassignJudgeFromSectionForLevel(judge.id, category, section, viewingLevel);
-                
+
                 const wasCoordinator = judge.roles.includes(UserRole.COORDINATOR);
                 const currentSectionsForCategory = judgeAssignmentSummary[category];
                 if (wasCoordinator && currentSectionsForCategory && currentSectionsForCategory.size === 2) {
@@ -415,16 +424,16 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
             }
         });
     };
-    
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Manage Assignments for ${judge.name}`} size="lg">
             <div className="space-y-6">
                 {canManage && (
-                     <form onSubmit={handleAssign} className="p-4 border dark:border-gray-700 rounded-lg space-y-4">
+                    <form onSubmit={handleAssign} className="p-4 border dark:border-gray-700 rounded-lg space-y-4">
                         <h3 className="font-semibold text-lg">Add New Assignment</h3>
-                        {error && <p className="text-red-500 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4"/>{error}</p>}
+                        {error && <p className="text-red-500 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</p>}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                             <div>
+                            <div>
                                 <label htmlFor="role-select" className="block text-sm font-medium mb-1">Assign as</label>
                                 <select id="role-select" value={selectedRole} onChange={e => setSelectedRole(e.target.value as any)} className="w-full p-2 rounded-md bg-background-light dark:bg-background-dark border border-gray-300 dark:border-gray-600" disabled={!canAssignNewRole}>
                                     <option value={UserRole.JUDGE}>Judge</option>
@@ -459,19 +468,18 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                                 const sections = Array.from(sectionsSet);
                                 const isCoordinatorForCategory = sections.length === 2;
                                 return (
-                                    <div key={category} className={`p-4 rounded-lg flex justify-between items-start md:items-center gap-4 ${
-                                        isCoordinatorForCategory ? 'bg-primary/10' : 'bg-gray-100 dark:bg-gray-800'
-                                    }`}>
+                                    <div key={category} className={`p-4 rounded-lg flex justify-between items-start md:items-center gap-4 ${isCoordinatorForCategory ? 'bg-primary/10' : 'bg-gray-100 dark:bg-gray-800'
+                                        }`}>
                                         <div>
                                             <p className="font-bold text-lg text-text-light dark:text-text-dark">{category}</p>
                                             {isCoordinatorForCategory ? (
-                                                <span className="text-sm text-primary font-semibold flex items-center gap-1"><CheckCircle size={14}/> Coordinating all sections</span>
+                                                <span className="text-sm text-primary font-semibold flex items-center gap-1"><CheckCircle size={14} /> Coordinating all sections</span>
                                             ) : (
                                                 <ul className="list-disc list-inside mt-2 space-y-1">
                                                     {sections.map(section => (
                                                         <li key={section} className="font-medium text-text-light dark:text-text-dark ml-2 flex items-center gap-2">
                                                             {section}
-                                                            {canManage && <button onClick={() => handleRemoveSection(category, section)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4"/></button>}
+                                                            {canManage && <button onClick={() => handleRemoveSection(category, section)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -484,7 +492,7 @@ const JudgeCategoryAssignmentModal: React.FC<JudgeCategoryAssignmentModalProps> 
                                                 </Button>
                                                 {!isCoordinatorForCategory && (
                                                     <Button size="sm" variant="secondary" className="flex items-center gap-1" onClick={() => handleAddSection(category, sections)}>
-                                                        <PlusCircle size={14}/> Add other section & promote to Coordinator
+                                                        <PlusCircle size={14} /> Add other section & promote to Coordinator
                                                     </Button>
                                                 )}
                                             </div>

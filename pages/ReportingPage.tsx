@@ -3,21 +3,22 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { AppContext } from '../context/AppContext';
 import { Project, UserRole, RankedEntity, CompetitionLevel, ProjectWithRank, JudgeAssignment, User } from '../types';
-import { Download, Search, FileText } from 'lucide-react';
+import { Download, Search, FileText, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import CompetitionLevelSwitcher from '../components/CompetitionLevelSwitcher';
 import JurisdictionFilter, { FilterState } from '../components/admin/JurisdictionFilter';
 import { SCORE_SHEET, ROBOTICS_SCORE_SHEET } from '../constants';
+import { saveProfileOrFile } from '../utils/downloadUtils';
 
 // Helper function to format strings to Title Case
 const toTitleCase = (str: string): string => {
-  if (!str) return '';
-  return str
-    .toLowerCase()
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 };
 
 type RankingType = 'school' | 'zone' | 'subCounty' | 'county' | 'region';
@@ -60,15 +61,15 @@ const calculateB_C_Scores = (breakdown: { [key: number]: number } | null | undef
 
 // --- START: SUB-COMPONENTS FOR REPORTING PAGE ---
 
-const ProjectSummaryDisplay: React.FC<{ data: { [category: string]: any[] }, onDownload: () => void }> = ({ data, onDownload }) => {
+const ProjectSummaryDisplay: React.FC<{ data: { [category: string]: any[] }, onDownload: () => void, isDownloading: boolean }> = ({ data, onDownload, isDownloading }) => {
     const categories = Object.keys(data).sort();
     const hasData = categories.some(cat => data[cat] && data[cat].length > 0);
 
     return (
         <div>
             <div className="flex justify-end mb-4">
-                <Button onClick={onDownload} disabled={!hasData} className="flex items-center gap-2">
-                    <Download /> Download Summary (PDF)
+                <Button onClick={onDownload} disabled={!hasData || isDownloading} className="flex items-center gap-2">
+                    {isDownloading ? <Loader2 className="animate-spin" /> : <Download />} {isDownloading ? 'Processing...' : 'Download Summary (PDF)'}
                 </Button>
             </div>
             {hasData ? (
@@ -123,19 +124,19 @@ const ProjectBroadsheetDisplay: React.FC<{ data: any, users: User[] }> = ({ data
             {Object.entries(data).map(([category, categoryData]: [string, any]) => {
                 const { judges, projects } = categoryData;
                 const userMap = new Map(users.map(u => [u.id, u.name]));
-                
+
                 // Check if any coordinator has submitted a score for any project in this category.
-                const hasCoordinatorScores = projects.some((p: any) => 
-                    Object.values(p.coordinatorScores).some((scores: any) => 
-                        (scores.scoreA !== null && scores.scoreA !== undefined) || 
-                        (scores.scoreB !== null && scores.scoreB !== undefined) || 
+                const hasCoordinatorScores = projects.some((p: any) =>
+                    Object.values(p.coordinatorScores).some((scores: any) =>
+                        (scores.scoreA !== null && scores.scoreA !== undefined) ||
+                        (scores.scoreB !== null && scores.scoreB !== undefined) ||
                         (scores.scoreC !== null && scores.scoreC !== undefined)
                     )
                 );
-                
+
                 const partAJudges = judges.partA.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown Judge' }));
                 const partBCJudges = judges.partBC.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown Judge' }));
-                
+
                 // Only include coordinators for rendering if they have scored something.
                 const coordinators = hasCoordinatorScores
                     ? judges.coordinators.map((c: any) => ({ id: c.id, name: userMap.get(c.id) || 'Unknown Coordinator' }))
@@ -159,10 +160,10 @@ const ProjectBroadsheetDisplay: React.FC<{ data: any, users: User[] }> = ({ data
                                     {partAJudges.length > 0 && <th className="border p-1" colSpan={partAJudges.length}>Section A/{maxA}</th>}
                                     {partBCJudges.length > 0 && <th className="border p-1" colSpan={partBCJudges.length}>Section B/{maxB}</th>}
                                     {partBCJudges.length > 0 && <th className="border p-1" colSpan={partBCJudges.length}>Section C/{maxC}</th>}
-                                    
+
                                     {coordinators.length === 1 && <th className="border p-1" colSpan={3}>Coordinator ({coordinators[0].name})</th>}
                                     {coordinators.length > 1 && <th className="border p-1" colSpan={coordinators.length * 3}>Coordinators</th>}
-                                    
+
                                     <th className="border p-1" colSpan={3}>Averages</th>
                                     <th className="border p-1" rowSpan={2}>Total</th>
                                     <th className="border p-1" rowSpan={2}>Rank</th>
@@ -171,7 +172,7 @@ const ProjectBroadsheetDisplay: React.FC<{ data: any, users: User[] }> = ({ data
                                     {partAJudges.map((j: any) => <th key={j.id} className="border p-1 font-normal">{j.name}</th>)}
                                     {partBCJudges.map((j: any) => <th key={j.id} className="border p-1 font-normal">{j.name}</th>)}
                                     {partBCJudges.map((j: any) => <th key={j.id} className="border p-1 font-normal">{j.name}</th>)}
-                                    
+
                                     {coordinators.length === 1 && [
                                         <th key={`${coordinators[0].id}-a`} className="border p-1 font-normal">A</th>,
                                         <th key={`${coordinators[0].id}-b`} className="border p-1 font-normal">B</th>,
@@ -182,7 +183,7 @@ const ProjectBroadsheetDisplay: React.FC<{ data: any, users: User[] }> = ({ data
                                         <th key={`${c.id}-b`} className="border p-1 font-normal">{c.name} (B)</th>,
                                         <th key={`${c.id}-c`} className="border p-1 font-normal">{c.name} (C)</th>
                                     ])}
-                                    
+
                                     <th className="border p-1">Sec A/{maxA}</th>
                                     <th className="border p-1">Sec B/{maxB}</th>
                                     <th className="border p-1">Sec C/{maxC}</th>
@@ -194,11 +195,11 @@ const ProjectBroadsheetDisplay: React.FC<{ data: any, users: User[] }> = ({ data
                                         <td className="border p-1">{p.students.join(', ')}</td>
                                         <td className="border p-1">{p.school}</td>
                                         <td className="border p-1">{p.title}</td>
-                                        
+
                                         {partAJudges.map((j: any) => <td key={j.id} className="border p-1 text-center">{p.judgeScores[j.id]?.['Part A']?.toFixed(2) ?? '-'}</td>)}
                                         {partBCJudges.map((j: any) => <td key={j.id} className="border p-1 text-center">{p.judgeScores[j.id]?.['Part B']?.toFixed(2) ?? '-'}</td>)}
                                         {partBCJudges.map((j: any) => <td key={j.id} className="border p-1 text-center">{p.judgeScores[j.id]?.['Part C']?.toFixed(2) ?? '-'}</td>)}
-                                        
+
                                         {coordinators.flatMap((c: any) => [
                                             <td key={`${c.id}-a`} className="border p-1 text-center">{p.coordinatorScores[c.id]?.scoreA?.toFixed(2) ?? '-'}</td>,
                                             <td key={`${c.id}-b`} className="border p-1 text-center">{p.coordinatorScores[c.id]?.scoreB?.toFixed(2) ?? '-'}</td>,
@@ -230,7 +231,7 @@ const EntityRankingsDisplay: React.FC<{
     searchTerm: string,
     setSearchTerm: (term: string) => void,
 }> = ({ rankedEntities, entityTypeLabel, rankingType, setRankingType, searchTerm, setSearchTerm }) => (
-     <Card>
+    <Card>
         <h2 className="text-xl font-bold text-secondary dark:text-accent-green mb-4">Entity Rankings</h2>
         <div className="flex flex-wrap gap-4 justify-between items-center">
             <div className="flex border border-gray-200 dark:border-gray-700 rounded-lg p-1">
@@ -281,15 +282,15 @@ const EntityRankingsDisplay: React.FC<{
 
 
 export const ReportingPage: React.FC = () => {
-    const { 
-        user, 
+    const {
+        user,
         users,
-        projects, 
+        projects,
         assignments,
         calculateProjectScores,
         calculateProjectScoresWithBreakdown,
-        calculateRankingsAndPointsForProjects, 
-        viewingLevel, 
+        calculateRankingsAndPointsForProjects,
+        viewingLevel,
     } = useContext(AppContext);
 
     const [activeView, setActiveView] = useState<ActiveView>('broadsheet');
@@ -304,6 +305,7 @@ export const ReportingPage: React.FC = () => {
     });
     const [rankingType, setRankingType] = useState<RankingType>('school');
     const [searchTerm, setSearchTerm] = useState('');
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const isAdmin = user && [UserRole.NATIONAL_ADMIN, UserRole.REGIONAL_ADMIN, UserRole.COUNTY_ADMIN, UserRole.SUB_COUNTY_ADMIN].includes(user.currentRole);
 
@@ -323,7 +325,7 @@ export const ReportingPage: React.FC = () => {
         if (filter.subCounty !== 'All') projectsToRank = projectsToRank.filter(p => p.subCounty === filter.subCounty);
 
         const data = calculateRankingsAndPointsForProjects(projectsToRank, viewingLevel);
-        
+
         let entities: RankedEntity[] = [];
         let label = 'School';
 
@@ -341,12 +343,12 @@ export const ReportingPage: React.FC = () => {
 
         return { relevantProjects: projectsToRank, rankingData: data, rankedEntities: entities, entityTypeLabel: label };
     }, [projects, viewingLevel, filter, rankingType, searchTerm, calculateRankingsAndPointsForProjects]);
-    
+
     // Data for the old "Summary" view
     const summaryData = useMemo(() => {
         if (!rankingData) {
             // FIX: Guard against null rankingData to prevent runtime errors.
-            return relevantProjects.map(project => ({...project, totalScore: null, points: null, categoryRank: null, }));
+            return relevantProjects.map(project => ({ ...project, totalScore: null, points: null, categoryRank: null, }));
         }
         // FIX: Explicitly type the Map to ensure `rankedData` is correctly inferred as `ProjectWithRank`.
         const rankedProjectsMap = new Map<string, ProjectWithRank>(rankingData.projectsWithPoints.map(p => [p.id, p]));
@@ -406,18 +408,18 @@ export const ReportingPage: React.FC = () => {
 
             // --- FIX: Logic to historically identify judges and coordinators ---
             const judgeCollector = { partA: new Set<string>(), partBC: new Set<string>(), coordinators: new Set<string>() };
-            
+
             const allAssignmentsForCategory = assignments.filter(a => {
                 const proj = projects.find(p => p.id === a.projectId);
                 return proj && proj.category === category && a.competitionLevel === viewingLevel;
             });
-    
+
             const assignmentsByJudge = allAssignmentsForCategory.reduce((acc, a) => {
                 if (!acc[a.judgeId]) acc[a.judgeId] = new Set<string>();
                 acc[a.judgeId].add(a.assignedSection);
                 return acc;
             }, {} as Record<string, Set<string>>);
-            
+
             for (const judgeId in assignmentsByJudge) {
                 const sections = assignmentsByJudge[judgeId];
                 if (sections.has('Part A') && sections.has('Part B & C')) {
@@ -478,120 +480,143 @@ export const ReportingPage: React.FC = () => {
     }, [relevantProjects, assignments, users, viewingLevel, rankingData, calculateProjectScoresWithBreakdown, projects]);
 
 
-    const handleDownloadSummary = () => {
-        const doc = new jsPDF({ orientation: 'landscape' });
-        doc.setFontSize(16);
-        doc.text(`KSEF Project Summary - ${viewingLevel} Level`, doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
-    
-        const categories = Object.keys(groupedSummaryData).sort();
-        const hasData = categories.some(cat => groupedSummaryData[cat].length > 0);
-        if (!hasData) {
-            return;
-        }
-    
-        let lastFinalY = 20;
-    
-        categories.forEach(category => {
-            const projectsInCategory = groupedSummaryData[category];
-            if (projectsInCategory.length === 0) return;
-    
-            // Auto page break logic
-            const neededHeight = 10 + 10 + (projectsInCategory.length * 10); // Rough estimate
-            if (lastFinalY > 20 && lastFinalY + neededHeight > doc.internal.pageSize.getHeight()) {
-                doc.addPage();
-                lastFinalY = 20;
+    const handleDownloadSummary = async () => {
+        setIsDownloading(true);
+        // Small timeout to allow UI to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            const doc = new jsPDF({ orientation: 'landscape' });
+            doc.setFontSize(16);
+            doc.text(`KSEF Project Summary - ${viewingLevel} Level`, doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+
+            const categories = Object.keys(groupedSummaryData).sort();
+            const hasData = categories.some(cat => groupedSummaryData[cat].length > 0);
+            if (!hasData) {
+                return;
             }
-    
-            const startY = lastFinalY + (lastFinalY > 20 ? 10 : 0);
-            
-            doc.setFontSize(14);
-            doc.setTextColor(40);
-            doc.setFont(undefined, 'bold');
-            doc.text(category, 14, startY);
-    
-            const head = [['Reg. No', 'Title', 'School', 'Score', 'Points', 'Rank']];
-            const body = projectsInCategory.map(p => [
-                p.projectRegistrationNumber, 
-                p.title, 
-                p.school,
-                p.totalScore !== null ? p.totalScore.toFixed(2) : 'N/A',
-                p.points !== null ? p.points : 'N/A',
-                p.categoryRank !== null ? p.categoryRank : 'N/A',
-            ]);
-    
-            (doc as any).autoTable({
-                startY: startY + 5,
-                head: head,
-                body: body,
-                theme: 'grid',
-                headStyles: { fillColor: [220, 220, 220], textColor: 0 },
+
+            let lastFinalY = 20;
+
+            categories.forEach(category => {
+                const projectsInCategory = groupedSummaryData[category];
+                if (projectsInCategory.length === 0) return;
+
+                // Auto page break logic
+                const neededHeight = 10 + 10 + (projectsInCategory.length * 10); // Rough estimate
+                if (lastFinalY > 20 && lastFinalY + neededHeight > doc.internal.pageSize.getHeight()) {
+                    doc.addPage();
+                    lastFinalY = 20;
+                }
+
+                const startY = lastFinalY + (lastFinalY > 20 ? 10 : 0);
+
+                doc.setFontSize(14);
+                doc.setTextColor(40);
+                doc.setFont(undefined, 'bold');
+                doc.text(category, 14, startY);
+
+                const head = [['Reg. No', 'Title', 'School', 'Score', 'Points', 'Rank']];
+                const body = projectsInCategory.map(p => [
+                    p.projectRegistrationNumber,
+                    p.title,
+                    p.school,
+                    p.totalScore !== null ? p.totalScore.toFixed(2) : 'N/A',
+                    p.points !== null ? p.points : 'N/A',
+                    p.categoryRank !== null ? p.categoryRank : 'N/A',
+                ]);
+
+                (doc as any).autoTable({
+                    startY: startY + 5,
+                    head: head,
+                    body: body,
+                    theme: 'grid',
+                    headStyles: { fillColor: [220, 220, 220], textColor: 0 },
+                });
+
+                lastFinalY = (doc as any).lastAutoTable.finalY;
             });
-    
-            lastFinalY = (doc as any).lastAutoTable.finalY;
-        });
-    
-        doc.save(`KSEF_Summary_${viewingLevel}.pdf`);
+
+            await saveProfileOrFile(doc, `KSEF_Summary_${viewingLevel}.pdf`);
+        } catch (error) {
+            console.error("Download failed:", error);
+            // You might want to show a toast here via showNotification if available
+            alert("Download failed. Please try again.");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
-    const handleDownloadBroadsheet = () => {
-        const doc = new jsPDF({ orientation: 'landscape', format: 'a3' });
-        const userMap = new Map(users.map(u => [u.id, u.name]));
-        let isFirstPage = true;
-    
-        Object.entries(detailedBroadsheetData).forEach(([category, categoryData]: [string, any]) => {
-            // FIX: Corrected the arguments for jsPDF's 'addPage' method.
-            if (!isFirstPage) doc.addPage('a3', 'landscape');
-            isFirstPage = false;
-    
-            doc.setFontSize(16);
-            doc.text(`KSEF RESULTS BROADHEET - ${viewingLevel} Level`, doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
-            doc.setFontSize(14);
-            doc.text(`CATEGORY: ${category.toUpperCase()}`, doc.internal.pageSize.getWidth() / 2, 22, { align: 'center' });
-    
-            const { judges, projects } = categoryData;
-            
-            const partAJudges = judges.partA.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown' }));
-            const partBCJudges = judges.partBC.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown' }));
-            const coordinators = judges.coordinators.map((c: any) => ({ id: c.id, name: userMap.get(c.id) || 'Unknown' }));
-    
-            const head: any[][] = [];
-            const head1: any[] = [
-                { content: 'Student(s)', rowSpan: 2 }, { content: 'School', rowSpan: 2 }, { content: 'Project Title', rowSpan: 2 },
-            ];
-            const head2: any[] = [];
-            
-            if (partAJudges.length > 0) head1.push({ content: 'Section A', colSpan: partAJudges.length });
-            if (partBCJudges.length > 0) head1.push({ content: 'Section B', colSpan: partBCJudges.length });
-            if (partBCJudges.length > 0) head1.push({ content: 'Section C', colSpan: partBCJudges.length });
-            if (coordinators.length > 0) head1.push({ content: 'Coordinator', colSpan: coordinators.length * 3 });
-            head1.push({ content: 'Averages', colSpan: 3 }, { content: 'Total', rowSpan: 2 }, { content: 'Rank', rowSpan: 2 });
-            
-            partAJudges.forEach(j => head2.push(j.name));
-            partBCJudges.forEach(j => head2.push(j.name));
-            partBCJudges.forEach(j => head2.push(j.name));
-            coordinators.forEach(c => { head2.push(`${c.name} (A)`); head2.push(`${c.name} (B)`); head2.push(`${c.name} (C)`); });
-            head2.push('Sec A/30', 'Sec B/15', 'Sec C/35');
-            head.push(head1, head2);
-    
-            const body = projects.map((p: any) => {
-                const row = [p.students.join('\n'), p.school, p.title];
-                partAJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part A']?.toFixed(2) ?? '-'));
-                partBCJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part B']?.toFixed(2) ?? '-'));
-                partBCJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part C']?.toFixed(2) ?? '-'));
-                coordinators.forEach(c => {
-                    row.push(p.coordinatorScores[c.id]?.scoreA?.toFixed(2) ?? '-');
-                    row.push(p.coordinatorScores[c.id]?.scoreB?.toFixed(2) ?? '-');
-                    row.push(p.coordinatorScores[c.id]?.scoreC?.toFixed(2) ?? '-');
+    const handleDownloadBroadsheet = async () => {
+        setIsDownloading(true);
+        // Small timeout to allow UI to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            const doc = new jsPDF({ orientation: 'landscape', format: 'a3' });
+            const userMap = new Map(users.map(u => [u.id, u.name]));
+            let isFirstPage = true;
+
+            Object.entries(detailedBroadsheetData).forEach(([category, categoryData]: [string, any]) => {
+                // FIX: Corrected the arguments for jsPDF's 'addPage' method.
+                if (!isFirstPage) doc.addPage('a3', 'landscape');
+                isFirstPage = false;
+
+                doc.setFontSize(16);
+                doc.text(`KSEF RESULTS BROADHEET - ${viewingLevel} Level`, doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+                doc.setFontSize(14);
+                doc.text(`CATEGORY: ${category.toUpperCase()}`, doc.internal.pageSize.getWidth() / 2, 22, { align: 'center' });
+
+                const { judges, projects } = categoryData;
+
+                const partAJudges = judges.partA.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown' }));
+                const partBCJudges = judges.partBC.map((j: any) => ({ id: j.id, name: userMap.get(j.id) || 'Unknown' }));
+                const coordinators = judges.coordinators.map((c: any) => ({ id: c.id, name: userMap.get(c.id) || 'Unknown' }));
+
+                const head: any[][] = [];
+                const head1: any[] = [
+                    { content: 'Student(s)', rowSpan: 2 }, { content: 'School', rowSpan: 2 }, { content: 'Project Title', rowSpan: 2 },
+                ];
+                const head2: any[] = [];
+
+                if (partAJudges.length > 0) head1.push({ content: 'Section A', colSpan: partAJudges.length });
+                if (partBCJudges.length > 0) head1.push({ content: 'Section B', colSpan: partBCJudges.length });
+                if (partBCJudges.length > 0) head1.push({ content: 'Section C', colSpan: partBCJudges.length });
+                if (coordinators.length > 0) head1.push({ content: 'Coordinator', colSpan: coordinators.length * 3 });
+                head1.push({ content: 'Averages', colSpan: 3 }, { content: 'Total', rowSpan: 2 }, { content: 'Rank', rowSpan: 2 });
+
+                partAJudges.forEach(j => head2.push(j.name));
+                partBCJudges.forEach(j => head2.push(j.name));
+                partBCJudges.forEach(j => head2.push(j.name));
+                coordinators.forEach(c => { head2.push(`${c.name} (A)`); head2.push(`${c.name} (B)`); head2.push(`${c.name} (C)`); });
+                head2.push('Sec A/30', 'Sec B/15', 'Sec C/35');
+                head.push(head1, head2);
+
+                const body = projects.map((p: any) => {
+                    const row = [p.students.join('\n'), p.school, p.title];
+                    partAJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part A']?.toFixed(2) ?? '-'));
+                    partBCJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part B']?.toFixed(2) ?? '-'));
+                    partBCJudges.forEach(j => row.push(p.judgeScores[j.id]?.['Part C']?.toFixed(2) ?? '-'));
+                    coordinators.forEach(c => {
+                        row.push(p.coordinatorScores[c.id]?.scoreA?.toFixed(2) ?? '-');
+                        row.push(p.coordinatorScores[c.id]?.scoreB?.toFixed(2) ?? '-');
+                        row.push(p.coordinatorScores[c.id]?.scoreC?.toFixed(2) ?? '-');
+                    });
+                    row.push(p.averages.scoreA?.toFixed(2) ?? 'N/A', p.averages.scoreB?.toFixed(2) ?? 'N/A', p.averages.scoreC?.toFixed(2) ?? 'N/A');
+                    row.push(p.totalScore?.toFixed(2) ?? 'N/A', p.rank ?? 'N/A');
+                    return row;
                 });
-                row.push(p.averages.scoreA?.toFixed(2) ?? 'N/A', p.averages.scoreB?.toFixed(2) ?? 'N/A', p.averages.scoreC?.toFixed(2) ?? 'N/A');
-                row.push(p.totalScore?.toFixed(2) ?? 'N/A', p.rank ?? 'N/A');
-                return row;
+
+                (doc as any).autoTable({ startY: 30, head: head, body, theme: 'grid', styles: { fontSize: 8 } });
             });
-            
-            (doc as any).autoTable({ startY: 30, head: head, body, theme: 'grid', styles: { fontSize: 8 } });
-        });
-        
-        doc.save(`KSEF_Broadsheet_${viewingLevel}.pdf`);
+
+            await saveProfileOrFile(doc, `KSEF_Broadsheet_${viewingLevel}.pdf`);
+        } catch (error) {
+            console.error("Download failed:", error);
+            alert("Download failed. Please try again.");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     return (
@@ -603,24 +628,24 @@ export const ReportingPage: React.FC = () => {
 
             <Card>
                 <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
-                    <Button variant="ghost" onClick={() => setActiveView('broadsheet')} className={`!rounded-b-none ${activeView === 'broadsheet' ? 'border-b-2 border-primary text-primary' : 'text-text-muted-light'}`}><FileText className="w-4 h-4 mr-2"/> Project Broadsheet</Button>
-                    <Button variant="ghost" onClick={() => setActiveView('summary')} className={`!rounded-b-none ${activeView === 'summary' ? 'border-b-2 border-primary text-primary' : 'text-text-muted-light'}`}><FileText className="w-4 h-4 mr-2"/> Project Summary</Button>
+                    <Button variant="ghost" onClick={() => setActiveView('broadsheet')} className={`!rounded-b-none ${activeView === 'broadsheet' ? 'border-b-2 border-primary text-primary' : 'text-text-muted-light'}`}><FileText className="w-4 h-4 mr-2" /> Project Broadsheet</Button>
+                    <Button variant="ghost" onClick={() => setActiveView('summary')} className={`!rounded-b-none ${activeView === 'summary' ? 'border-b-2 border-primary text-primary' : 'text-text-muted-light'}`}><FileText className="w-4 h-4 mr-2" /> Project Summary</Button>
                 </div>
 
                 {activeView === 'broadsheet' && (
                     <>
                         <div className="flex justify-end mb-4">
-                            <Button onClick={handleDownloadBroadsheet} disabled={Object.keys(detailedBroadsheetData).length === 0} className="flex items-center gap-2">
-                                <Download /> Download Broadsheet (PDF)
+                            <Button onClick={handleDownloadBroadsheet} disabled={Object.keys(detailedBroadsheetData).length === 0 || isDownloading} className="flex items-center gap-2">
+                                {isDownloading ? <Loader2 className="animate-spin" /> : <Download />} {isDownloading ? 'Processing...' : 'Download Broadsheet (PDF)'}
                             </Button>
                         </div>
                         <ProjectBroadsheetDisplay data={detailedBroadsheetData} users={users} />
                     </>
                 )}
-                {activeView === 'summary' && <ProjectSummaryDisplay data={groupedSummaryData} onDownload={handleDownloadSummary} />}
+                {activeView === 'summary' && <ProjectSummaryDisplay data={groupedSummaryData} onDownload={handleDownloadSummary} isDownloading={isDownloading} />}
             </Card>
 
-            <EntityRankingsDisplay 
+            <EntityRankingsDisplay
                 rankedEntities={rankedEntities}
                 entityTypeLabel={entityTypeLabel}
                 rankingType={rankingType}

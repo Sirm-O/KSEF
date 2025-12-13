@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KSEF Online</string>
+    <string name="title_activity_main">KSEF Online</string>
+    <string name="package_name">com.ksef.platform</string>
+    <string name="custom_url_scheme">com.ksef.platform</string>
+</resources>

@@ -1,7 +1,7 @@
 import React, { useContext, useState, useMemo, useEffect } from 'react';
 // FIX: Replaced namespace import for react-router-dom with a named import to resolve module export errors.
 import { useNavigate } from 'react-router-dom';
-import { Plus, Download, BarChart2, Edit, Trash2, Clock, Eye, Hourglass, FilterX, AlertTriangle, Trophy, School, FileText, Award, ChevronDown, Award as CertificateIcon } from 'lucide-react';
+import { Plus, Download, BarChart2, Edit, Trash2, Clock, Eye, Hourglass, FilterX, AlertTriangle, Trophy, School, FileText, Award, ChevronDown, Award as CertificateIcon, Loader2 } from 'lucide-react';
 import { AppContext, ProjectScores } from '../context/AppContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -13,6 +13,7 @@ import 'jspdf-autotable';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { SCORE_SHEET, ROBOTICS_SCORE_SHEET } from '../constants';
 import { addCertificatePage } from '../components/reports/CertificateGenerator';
+import { saveProfileOrFile } from '../utils/downloadUtils';
 
 
 // --- NEW LOGIC: Pre-calculate criteria ID sets for score breakdown ---
@@ -197,6 +198,7 @@ const ProjectDetailsModal: React.FC<{
     const [previousLevel, setPreviousLevel] = useState<CompetitionLevel | null>(null);
     const [previousLevelScores, setPreviousLevelScores] = useState<ProjectScores | null>(null);
     const [previousLevelDetails, setPreviousLevelDetails] = useState<JudgingDetails[]>([]);
+    const [isDownloading, setIsDownloading] = useState(false);
     const [categoryStats, setCategoryStats] = useState<CategoryStats | null>(null);
 
     useEffect(() => {
@@ -355,26 +357,36 @@ const ProjectDetailsModal: React.FC<{
         });
     };
 
-    const handleDownloadFullHistory = () => {
+    const handleDownloadFullHistory = async () => {
         if (!project) return;
 
-        const doc = new jsPDF();
-        let pagesGenerated = 0;
+        setIsDownloading(true);
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        if (activeScores && activeScores.isFullyJudged) {
-            if (pagesGenerated > 0) doc.addPage();
-            generateScoresheetForLevel(doc, activeScores, activeDetails, project.currentLevel);
-            pagesGenerated++;
-        }
+        try {
+            const doc = new jsPDF();
+            let pagesGenerated = 0;
 
-        if (previousLevelScores && previousLevelScores.isFullyJudged) {
-            if (pagesGenerated > 0) doc.addPage();
-            generateScoresheetForLevel(doc, previousLevelScores, previousLevelDetails, previousLevel!);
-            pagesGenerated++;
-        }
+            if (activeScores && activeScores.isFullyJudged) {
+                if (pagesGenerated > 0) doc.addPage();
+                generateScoresheetForLevel(doc, activeScores, activeDetails, project.currentLevel);
+                pagesGenerated++;
+            }
 
-        if (pagesGenerated > 0) {
-            doc.save(`${project.title}_Competition_History.pdf`);
+            if (previousLevelScores && previousLevelScores.isFullyJudged) {
+                if (pagesGenerated > 0) doc.addPage();
+                generateScoresheetForLevel(doc, previousLevelScores, previousLevelDetails, previousLevel!);
+                pagesGenerated++;
+            }
+
+            if (pagesGenerated > 0) {
+                await saveProfileOrFile(doc, `${project.title}_Competition_History.pdf`);
+            }
+        } catch (error) {
+            console.error("Download failed:", error);
+            alert("Download failed. Please try again.");
+        } finally {
+            setIsDownloading(false);
         }
     };
 
@@ -477,13 +489,8 @@ const ProjectDetailsModal: React.FC<{
 
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t dark:border-gray-700">
                     <Button variant="ghost" onClick={onClose}>Close</Button>
-                    <Button
-                        onClick={handleDownloadFullHistory}
-                        disabled={!activeScores?.isFullyJudged && !previousLevelScores?.isFullyJudged}
-                        title={!activeScores?.isFullyJudged && !previousLevelScores?.isFullyJudged ? "No completed reports available to download" : "Download full competition history"}
-                        className="flex items-center gap-2"
-                    >
-                        <Download /> Download Report
+                    <Button onClick={handleDownloadFullHistory} size="sm" variant="secondary" disabled={isDownloading} className="flex items-center gap-1">
+                        {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download History
                     </Button>
                 </div>
             </div>
@@ -509,13 +516,10 @@ const PatronDashboard: React.FC = () => {
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
 
-    const [confirmModalState, setConfirmModalState] = useState<{
-        isOpen: boolean;
-        projectToDelete: Project | null;
-    }>({ isOpen: false, projectToDelete: null });
-
+    const [confirmModalState, setConfirmModalState] = useState<{ isOpen: boolean, projectToDelete: Project | null }>({ isOpen: false, projectToDelete: null });
+    const [certificateMenu, setCertificateMenu] = useState<{ anchorEl: HTMLElement | null, project: Project | null }>({ anchorEl: null, project: null });
+    const [isDownloading, setIsDownloading] = useState(false);
     const [activeFilter, setActiveFilter] = useState<'ALL' | 'QUALIFIED' | 'ACTIVE' | 'ELIMINATED'>('ALL');
-    const [certificateMenu, setCertificateMenu] = useState<{ anchorEl: null | HTMLElement, project: Project | null }>({ anchorEl: null, project: null });
 
     const isDeadlinePassed = useMemo(() => submissionDeadline && new Date() > new Date(submissionDeadline), [submissionDeadline]);
 
@@ -598,31 +602,42 @@ const PatronDashboard: React.FC = () => {
         setConfirmModalState({ isOpen: false, projectToDelete: null });
     };
 
-    const handleDownloadSchoolReport = () => {
+    const handleDownloadSchoolReport = async () => {
         if (!user || !user.school || !rankingData) return;
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text(`KSEF Performance Report for ${user.school}`, 105, 20, { align: 'center' });
 
-        const schoolRankInfo = rankingData.schoolRanking.find(s => s.name === user.school);
-        doc.setFontSize(12);
-        doc.text(`Overall School Rank: ${schoolRankInfo ? '#' + schoolRankInfo.rank : 'N/A'} with ${schoolRankInfo ? schoolRankInfo.totalPoints.toFixed(0) : '0'} points.`, 14, 35);
+        setIsDownloading(true);
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        const projectsWithRanks = rankingData.projectsWithPoints.filter(p => p.school === user.school);
+        try {
+            const doc = new jsPDF();
+            doc.setFontSize(18);
+            doc.text(`KSEF Performance Report for ${user.school}`, 105, 20, { align: 'center' });
 
-        if (projectsWithRanks.length > 0) {
-            (doc as any).autoTable({
-                startY: 45,
-                head: [['Project Title', 'Category', 'Category Rank', 'Score', 'Points Earned']],
-                body: projectsWithRanks.map(p => [p.title, p.category, p.categoryRank, p.totalScore.toFixed(2), p.points]),
-                theme: 'grid',
-                headStyles: { fillColor: [0, 52, 89] },
-            });
-        } else {
-            doc.text("No fully judged projects were found for this school.", 14, 45);
+            const schoolRankInfo = rankingData.schoolRanking.find(s => s.name === user.school);
+            doc.setFontSize(12);
+            doc.text(`Overall School Rank: ${schoolRankInfo ? '#' + schoolRankInfo.rank : 'N/A'} with ${schoolRankInfo ? schoolRankInfo.totalPoints.toFixed(0) : '0'} points.`, 14, 35);
+
+            const projectsWithRanks = rankingData.projectsWithPoints.filter(p => p.school === user.school);
+
+            if (projectsWithRanks.length > 0) {
+                (doc as any).autoTable({
+                    startY: 45,
+                    head: [['Project Title', 'Category', 'Category Rank', 'Score', 'Points Earned']],
+                    body: projectsWithRanks.map(p => [p.title, p.category, p.categoryRank, p.totalScore.toFixed(2), p.points]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [0, 52, 89] },
+                });
+            } else {
+                doc.text("No fully judged projects were found for this school.", 14, 45);
+            }
+
+            await saveProfileOrFile(doc, `${user.school}_Performance_Report.pdf`);
+        } catch (error) {
+            console.error("School report download failed:", error);
+            alert("Download failed. Please try again.");
+        } finally {
+            setIsDownloading(false);
         }
-
-        doc.save(`${user.school}_Performance_Report.pdf`);
     };
 
     const handleCertificateMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, project: Project) => {
@@ -633,114 +648,132 @@ const PatronDashboard: React.FC = () => {
         setCertificateMenu({ anchorEl: null, project: null });
     };
 
-    const handleGenerateCertificate = async (type: 'Student' | 'Patron' | 'School', studentIndex?: number) => {
-        const project = certificateMenu.project;
-        if (!project || !user || !activeEdition) return;
+    const handleGenerateCertificate = async (type: 'Student' | 'Patron' | 'School' | 'Judge', studentIndex?: number) => {
+        if (!certificateMenu.project || !activeEdition) return;
 
-        let levelFrom: CompetitionLevel | null;
-        if (project.currentLevel === CompetitionLevel.NATIONAL && isEditionCompleted) {
-            levelFrom = CompetitionLevel.NATIONAL;
-        } else {
-            levelFrom = getLevelQualifiedFrom(project.currentLevel);
-        }
-        const certificateLevel: CompetitionLevel | null = (type === 'School') ? project.currentLevel : levelFrom;
-        if (!certificateLevel) {
-            console.error("Could not determine level qualified from.");
-            return;
-        }
+        setIsDownloading(true);
+        // Alert user of start since menu closes
+        // alert("Generating certificate... Check notifications or wait for download."); 
+        // Or simply wait
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        let certName = '';
-        let fileName = '';
-        let tscNumber: string | undefined;
-        let idNumber: string | undefined;
+        try {
+            const project = certificateMenu.project;
+            // Existing logic uses project.currentLevel for single cert generation usually
+            // but let's assume the previous logic was correct
+            // ... (rest of logic)u.project;
+            if (!project || !user || !activeEdition) return;
 
-        switch (type) {
-            case 'Student':
-                certName = project.students[studentIndex!];
-                fileName = `${project.title}_Cert_Student_${studentIndex! + 1}.pdf`;
-                break;
-            case 'Patron':
-                certName = user.name;
-                fileName = `${project.title}_Cert_Patron.pdf`;
-                tscNumber = user.tscNumber;
-                idNumber = user.idNumber;
-                break;
-            case 'School':
-                certName = project.school;
-                fileName = `${project.title}_Cert_School.pdf`;
-                break;
-        }
-
-        // Determine national winner/participant status after publishing
-        let isWinner = false;
-        let isParticipant = false;
-        let award: string | undefined;
-        if (project.currentLevel === CompetitionLevel.NATIONAL && isEditionCompleted) {
-            const ranked = rankingData?.projectsWithPoints?.find(p => p.id === project.id);
-            if (ranked) {
-                if (ranked.categoryRank && ranked.categoryRank <= 3) {
-                    isWinner = true;
-                    award = `Position ${ranked.categoryRank}`;
-                } else {
-                    isParticipant = true;
-                }
+            let levelFrom: CompetitionLevel | null;
+            if (project.currentLevel === CompetitionLevel.NATIONAL && isEditionCompleted) {
+                levelFrom = CompetitionLevel.NATIONAL;
             } else {
-                // Fallback: treat as participant if ranking not found
-                isParticipant = true;
+                levelFrom = getLevelQualifiedFrom(project.currentLevel);
             }
-        }
-
-        // If School certificate, ensure this level is published and aggregate all projects for the school at this level
-        if (type === 'School') {
-            const isLevelPublished = certificateLevel === CompetitionLevel.NATIONAL
-                ? (isEditionCompleted || assignments.some(a => a.competitionLevel === CompetitionLevel.NATIONAL && a.isArchived))
-                : assignments.some(a => a.competitionLevel === certificateLevel && a.isArchived);
-            if (!isLevelPublished) {
-                showNotification?.('Certificates will be available after publishing results for this level.', 'warning');
+            const certificateLevel: CompetitionLevel | null = (type === 'School') ? project.currentLevel : levelFrom;
+            if (!certificateLevel) {
+                console.error("Could not determine level qualified from.");
                 return;
             }
+
+            let certName = '';
+            let fileName = '';
+            let tscNumber: string | undefined;
+            let idNumber: string | undefined;
+
+            switch (type) {
+                case 'Student':
+                    certName = project.students[studentIndex!];
+                    fileName = `${project.title}_Cert_Student_${studentIndex! + 1}.pdf`;
+                    break;
+                case 'Patron':
+                    certName = user.name;
+                    fileName = `${project.title}_Cert_Patron.pdf`;
+                    tscNumber = user.tscNumber;
+                    idNumber = user.idNumber;
+                    break;
+                case 'School':
+                    certName = project.school;
+                    fileName = `${project.title}_Cert_School.pdf`;
+                    break;
+            }
+
+            // Determine national winner/participant status after publishing
+            let isWinner = false;
+            let isParticipant = false;
+            let award: string | undefined;
+            if (project.currentLevel === CompetitionLevel.NATIONAL && isEditionCompleted) {
+                const ranked = rankingData?.projectsWithPoints?.find(p => p.id === project.id);
+                if (ranked) {
+                    if (ranked.categoryRank && ranked.categoryRank <= 3) {
+                        isWinner = true;
+                        award = `Position ${ranked.categoryRank}`;
+                    } else {
+                        isParticipant = true;
+                    }
+                } else {
+                    // Fallback: treat as participant if ranking not found
+                    isParticipant = true;
+                }
+            }
+
+            // If School certificate, ensure this level is published and aggregate all projects for the school at this level
+            if (type === 'School') {
+                const isLevelPublished = certificateLevel === CompetitionLevel.NATIONAL
+                    ? (isEditionCompleted || assignments.some(a => a.competitionLevel === CompetitionLevel.NATIONAL && a.isArchived))
+                    : assignments.some(a => a.competitionLevel === certificateLevel && a.isArchived);
+                if (!isLevelPublished) {
+                    showNotification?.('Certificates will be available after publishing results for this level.', 'warning');
+                    return;
+                }
+            }
+
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+            // For School: aggregate all school projects published at this level
+            const schoolProjectsAtLevel = (type === 'School')
+                ? projects
+                    .filter(p => p.school === project.school)
+                    .filter(p => assignments.some(a => a.projectId === p.id && a.competitionLevel === certificateLevel && a.isArchived))
+                    .map(p => p.title)
+                    .sort()
+                : undefined;
+
+            // Override naming for School to be per school/level
+            if (type === 'School') {
+                certName = project.school;
+                fileName = `${project.school.replace(/\s+/g, '_')}_${certificateLevel}_School_Certificate.pdf`;
+            }
+
+            await addCertificatePage({
+                doc,
+                name: certName,
+                type: type,
+                projectTitle: project.title,
+                school: project.school,
+                levelFrom: certificateLevel,
+                levelTo: project.currentLevel,
+                editionName: activeEdition.name,
+                region: project.region,
+                county: project.county,
+                subCounty: project.subCounty,
+                tscNumber,
+                idNumber,
+                category: project.category,
+                isWinner,
+                isParticipant,
+                award,
+                projectsList: schoolProjectsAtLevel,
+            });
+
+            await saveProfileOrFile(doc, fileName);
+        } catch (error) {
+            console.error("Certificate generation failed:", error);
+            alert("Certificate generation failed.");
+        } finally {
+            setIsDownloading(false);
+            handleCertificateMenuClose();
         }
-
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-
-        // For School: aggregate all school projects published at this level
-        const schoolProjectsAtLevel = (type === 'School')
-            ? projects
-                .filter(p => p.school === project.school)
-                .filter(p => assignments.some(a => a.projectId === p.id && a.competitionLevel === certificateLevel && a.isArchived))
-                .map(p => p.title)
-                .sort()
-            : undefined;
-
-        // Override naming for School to be per school/level
-        if (type === 'School') {
-            certName = project.school;
-            fileName = `${project.school.replace(/\s+/g, '_')}_${certificateLevel}_School_Certificate.pdf`;
-        }
-
-        await addCertificatePage({
-            doc,
-            name: certName,
-            type: type,
-            projectTitle: project.title,
-            school: project.school,
-            levelFrom: certificateLevel,
-            levelTo: project.currentLevel,
-            editionName: activeEdition.name,
-            region: project.region,
-            county: project.county,
-            subCounty: project.subCounty,
-            tscNumber,
-            idNumber,
-            category: project.category,
-            isWinner,
-            isParticipant,
-            award,
-            projectsList: schoolProjectsAtLevel,
-        });
-
-        doc.save(fileName);
-        handleCertificateMenuClose();
     };
 
     const renderStatus = (project: Project) => {
@@ -978,8 +1011,8 @@ const PatronDashboard: React.FC = () => {
                             Download a detailed PDF report of all your school's project performances and overall ranking.
                         </p>
                     </div>
-                    <Button variant="secondary" onClick={handleDownloadSchoolReport} className="w-full sm:w-auto flex items-center justify-center gap-2">
-                        <Download /> Download School Report
+                    <Button variant="secondary" onClick={handleDownloadSchoolReport} disabled={isDownloading} className="w-full sm:w-auto flex items-center justify-center gap-2">
+                        {isDownloading ? <Loader2 className="animate-spin" /> : <Download />} {isDownloading ? 'Processing...' : 'Download School Report'}
                     </Button>
                 </div>
             </Card>

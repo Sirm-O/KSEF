@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Phone Number Database</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Phone Number Database Test</h1>
+    <button onclick="testPhoneNumbers()">Test Phone Numbers in Database</button>
+    <button onclick="testSpecificPhone()">Test Specific Phone (0712345678)</button>
+    <pre id="output"></pre>
+
+    <script>
+        const supabaseUrl = 'https://bomfaccnllzskhnelwxx.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbWZhY2NubGx6c2tobmVsd3h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzA0ODUsImV4cCI6MjA3NDM0NjQ4NX0.hBLLpFEqNVHlHMS6Sigz2Z9t7vnpvjzooEeeWzsn5Tg';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+        async function testPhoneNumbers() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...';
+
+            try {
+                // Test 1: Get all users with phone numbers
+                const { data: usersWithPhones, error: error1 } = await supabase
+                    .from('profiles')
+                    .select('email, phone_number, name')
+                    .not('phone_number', 'is', null)
+                    .limit(10);
+
+                output.textContent = 'Test 1: Users with phone numbers:\n';
+                output.textContent += JSON.stringify({ data: usersWithPhones, error: error1 }, null, 2);
+
+                // Test 2: Get count of users with phone numbers
+                const { count, error: error2 } = await supabase
+                    .from('profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .not('phone_number', 'is', null);
+
+                output.textContent += '\n\nTest 2: Count of users with phone numbers:\n';
+                output.textContent += JSON.stringify({ count, error: error2 }, null, 2);
+
+                // Test 3: Get all column names
+                const { data: sample, error: error3 } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .limit(1);
+
+                output.textContent += '\n\nTest 3: Sample profile columns:\n';
+                if (sample && sample.length > 0) {
+                    output.textContent += 'Columns: ' + Object.keys(sample[0]).join(', ');
+                } else {
+                    output.textContent += JSON.stringify({ error: error3 }, null, 2);
+                }
+
+            } catch (err) {
+                output.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        async function testSpecificPhone() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing specific phone...';
+
+            const phoneToTest = '0712345678';
+
+            try {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('email, phone_number, name')
+                    .eq('phone_number', phoneToTest)
+                    .single();
+
+                output.textContent = `Test: Looking up phone ${phoneToTest}:\n`;
+                output.textContent += JSON.stringify({ data, error }, null, 2);
+            } catch (err) {
+                output.textContent = 'Error: ' + err.message;
+            }
+        }
+    </script>
+</body>
+</html>

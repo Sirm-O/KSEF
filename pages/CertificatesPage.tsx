@@ -5,7 +5,8 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { addCertificatePage } from '../components/reports/CertificateGenerator';
 import jsPDF from 'jspdf';
-import { Award, BookOpen, GraduationCap, School, ShieldCheck, Trophy } from 'lucide-react';
+import { Award, BookOpen, GraduationCap, School, ShieldCheck, Trophy, Loader2, Download } from 'lucide-react';
+import { saveProfileOrFile } from '../utils/downloadUtils';
 
 const LEVELS: CompetitionLevel[] = [
   CompetitionLevel.SUB_COUNTY,
@@ -26,6 +27,7 @@ const CertificatesPage: React.FC = () => {
   } = useContext(AppContext);
 
   const [level, setLevel] = useState<CompetitionLevel>(CompetitionLevel.SUB_COUNTY);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const mySchool = user?.school || '';
   const isPatron = user?.currentRole === UserRole.PATRON;
@@ -194,7 +196,10 @@ const CertificatesPage: React.FC = () => {
   const handleDownloadBundle = async (bundle: 'School' | 'Patron' | 'Students' | 'Judges') => {
     try {
       ensurePublished();
-      if (eligibleProjects.length === 0) return;
+      if (eligibleProjects.length === 0 && bundle !== 'Judges') return;
+
+      setIsDownloading(true);
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       let pageCount = 0;
@@ -265,10 +270,12 @@ const CertificatesPage: React.FC = () => {
 
       const schoolPart = isPatron ? mySchool.replace(/\s+/g, '_') + '_' : '';
       const fileName = `${schoolPart}${level}_Certificates_${bundle}.pdf`;
-      doc.save(fileName);
+      await saveProfileOrFile(doc, fileName);
     } catch (e) {
       console.error(e);
       alert((e as Error).message || 'Failed to generate certificates.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -309,28 +316,40 @@ const CertificatesPage: React.FC = () => {
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 font-semibold"><School className="w-5 h-5" /> School Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">All school certificates for projects at the selected level.</p>
-            <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('School')}>Download</Button>
+            <Button disabled={!isLevelPublished || eligibleProjects.length === 0 || isDownloading} onClick={() => handleDownloadBundle('School')} className="flex items-center justify-center gap-2">
+              {isDownloading ? <Loader2 className="animate-spin w-4 h-4" /> : <Download className="w-4 h-4" />}
+              {isDownloading ? 'Processing...' : 'Download'}
+            </Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5" /> Patron Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Patron certificates for each project at the selected level.</p>
-            <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('Patron')}>Download</Button>
+            <Button disabled={!isLevelPublished || eligibleProjects.length === 0 || isDownloading} onClick={() => handleDownloadBundle('Patron')} className="flex items-center justify-center gap-2">
+              {isDownloading ? <Loader2 className="animate-spin w-4 h-4" /> : <Download className="w-4 h-4" />}
+              {isDownloading ? 'Processing...' : 'Download'}
+            </Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 font-semibold"><GraduationCap className="w-5 h-5" /> Students Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Certificates for all students across the selected level.</p>
-            <Button disabled={!isLevelPublished || eligibleProjects.length === 0} onClick={() => handleDownloadBundle('Students')}>Download</Button>
+            <Button disabled={!isLevelPublished || eligibleProjects.length === 0 || isDownloading} onClick={() => handleDownloadBundle('Students')} className="flex items-center justify-center gap-2">
+              {isDownloading ? <Loader2 className="animate-spin w-4 h-4" /> : <Download className="w-4 h-4" />}
+              {isDownloading ? 'Processing...' : 'Download'}
+            </Button>
           </div>
         </Card>
         <Card>
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 font-semibold"><BookOpen className="w-5 h-5" /> Judges Bundle</div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Certificates for judges who evaluated your projects at this level.</p>
-            <Button disabled={!isLevelPublished} onClick={() => handleDownloadBundle('Judges')}>Download</Button>
+            <Button disabled={!isLevelPublished || isDownloading} onClick={() => handleDownloadBundle('Judges')} className="flex items-center justify-center gap-2">
+              {isDownloading ? <Loader2 className="animate-spin w-4 h-4" /> : <Download className="w-4 h-4" />}
+              {isDownloading ? 'Processing...' : 'Download'}
+            </Button>
           </div>
         </Card>
       </div>

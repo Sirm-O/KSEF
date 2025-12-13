@@ -1,5 +1,5 @@
 import React, { useContext, useMemo, useState, useEffect } from 'react';
-import { FileDown, Users, CheckCircle, AlertTriangle, FileText, BarChart, Shield, UserCheck, UserCircle, Send, Clock, Edit, Trophy, ListChecks, Award, RotateCcw, Info, Award as CertificateIcon } from 'lucide-react';
+import { FileDown, Users, CheckCircle, AlertTriangle, FileText, BarChart, Shield, UserCheck, UserCircle, Send, Clock, Edit, Trophy, ListChecks, Award, RotateCcw, Info, Award as CertificateIcon, Loader2 } from 'lucide-react';
 import DashboardCard from '../components/DashboardCard';
 import Card from '../components/ui/Card';
 import CategoryPieChart from '../components/charts/CategoryPieChart';
@@ -14,6 +14,7 @@ import ConfirmationModal from '../components/ui/ConfirmationModal';
 import TieBreakerModal from '../components/admin/TieBreakerModal';
 import CompetitionLevelSwitcher from '../components/CompetitionLevelSwitcher';
 import { addCertificatePage } from '../components/reports/CertificateGenerator';
+import { saveProfileOrFile } from '../utils/downloadUtils';
 
 const ADMIN_ROLES = [
     UserRole.SUPER_ADMIN, UserRole.NATIONAL_ADMIN, UserRole.REGIONAL_ADMIN,
@@ -168,6 +169,7 @@ const AdminDashboard: React.FC = () => {
     const [isUnpublishConfirmModalOpen, setUnpublishConfirmModalOpen] = useState(false);
     const [publishMessage, setPublishMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [tieBreakState, setTieBreakState] = useState<{ isOpen: boolean, project: Project | null, scores: ProjectScores | null }>({ isOpen: false, project: null, scores: null });
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const isDeadlinePassed = useMemo(() => {
         if (!submissionDeadline) return false; // If no deadline is set, it's not passed
@@ -427,120 +429,142 @@ const AdminDashboard: React.FC = () => {
     }, [user, users, projects, assignments, calculateProjectScores, calculateProjectScoresWithBreakdown, calculateRankingsAndPointsForProjects, viewingLevel, overallHighestLevel, nextLevel, isViewingActiveLevel, isViewingPastLevel, schoolData]);
 
     // FIX: Implement handleDownloadMarksheetsPDF function.
-    const handleDownloadMarksheetsPDF = () => {
+    const handleDownloadMarksheetsPDF = async () => {
         if (!user || !rankingData) {
             showNotification("No ranking data available to generate marksheets.", "error");
             return;
         }
 
-        const doc = new jsPDF({ orientation: 'landscape' });
+        setIsDownloading(true);
+        // Small timeout to allow UI update
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        const addHeader = (category: string) => {
-            const year = new Date().getFullYear();
-            const titlePart = `KSEF ${adminLevel} Competitions`.toUpperCase();
+        try {
+            const doc = new jsPDF({ orientation: 'landscape' });
 
-            doc.setFontSize(16);
-            doc.text("THE KENYA SCIENCE AND ENGINEERING FAIR (KSEF)", 148, 12, { align: 'center' });
-            doc.setFontSize(12);
-            doc.text(titlePart, 148, 18, { align: 'center' });
-            doc.text("RESULTS MARKSHEET", 148, 24, { align: 'center' });
-            doc.setFontSize(14);
-            doc.text(`CATEGORY: ${category.toUpperCase()}`, 148, 32, { align: 'center' });
-        };
+            const addHeader = (category: string) => {
+                const year = new Date().getFullYear();
+                const titlePart = `KSEF ${adminLevel} Competitions`.toUpperCase();
 
-        const projectsWithScoresAndBreakdown = rankingData.projectsWithPoints.map(p => {
-            const breakdown = calculateProjectScoresWithBreakdown(p.id, viewingLevel);
-            return { ...p, ...breakdown };
-        });
+                doc.setFontSize(16);
+                doc.text("THE KENYA SCIENCE AND ENGINEERING FAIR (KSEF)", 148, 12, { align: 'center' });
+                doc.setFontSize(12);
+                doc.text(titlePart, 148, 18, { align: 'center' });
+                doc.text("RESULTS MARKSHEET", 148, 24, { align: 'center' });
+                doc.setFontSize(14);
+                doc.text(`CATEGORY: ${category.toUpperCase()}`, 148, 32, { align: 'center' });
+            };
 
-        const projectsByCategory = projectsWithScoresAndBreakdown.reduce((acc, p) => {
-            if (!acc[p.category]) acc[p.category] = [];
-            acc[p.category].push(p);
-            return acc;
-        }, {} as Record<string, typeof projectsWithScoresAndBreakdown>);
-
-        const categories = Object.keys(projectsByCategory).sort();
-
-        if (categories.length === 0) {
-            showNotification("No projects with complete scores found to generate marksheets.", "info");
-            return;
-        }
-
-        categories.forEach((category, index) => {
-            if (index > 0) doc.addPage();
-            addHeader(category);
-
-            const projectsInCategory = projectsByCategory[category];
-
-            const head = [
-                [
-                    { content: 'Project', colSpan: 2, styles: { halign: 'center' } },
-                    { content: 'School', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
-                    { content: 'Presenters', colSpan: 2, styles: { halign: 'center' } },
-                    { content: 'Score Averages', colSpan: 3, styles: { halign: 'center' } },
-                    { content: 'Total Score', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
-                    { content: 'Points', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
-                    { content: 'Rank', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
-                ],
-                ['Reg. No', 'Title', 'Student 1', 'Student 2', 'Sec A', 'Sec B', 'Sec C']
-            ];
-
-            const body = projectsInCategory.map(p => [
-                p.projectRegistrationNumber,
-                p.title,
-                p.school,
-                p.students[0] || '',
-                p.students[1] || '',
-                p.scoreA?.toFixed(2) ?? 'N/A',
-                p.scoreB?.toFixed(2) ?? 'N/A',
-                p.scoreC?.toFixed(2) ?? 'N/A',
-                p.totalScore.toFixed(2),
-                p.points,
-                p.categoryRank
-            ]);
-
-            (doc as any).autoTable({
-                startY: 40,
-                head: head,
-                body: body,
-                theme: 'grid',
-                headStyles: { fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' },
+            const projectsWithScoresAndBreakdown = rankingData.projectsWithPoints.map(p => {
+                const breakdown = calculateProjectScoresWithBreakdown(p.id, viewingLevel);
+                return { ...p, ...breakdown };
             });
-        });
 
-        doc.save(`KSEF_Marksheet_${adminLevel}.pdf`);
+            const projectsByCategory = projectsWithScoresAndBreakdown.reduce((acc, p) => {
+                if (!acc[p.category]) acc[p.category] = [];
+                acc[p.category].push(p);
+                return acc;
+            }, {} as Record<string, typeof projectsWithScoresAndBreakdown>);
+
+            const categories = Object.keys(projectsByCategory).sort();
+
+            if (categories.length === 0) {
+                showNotification("No projects with complete scores found to generate marksheets.", "info");
+                return;
+            }
+
+            categories.forEach((category, index) => {
+                if (index > 0) doc.addPage();
+                addHeader(category);
+
+                const projectsInCategory = projectsByCategory[category];
+
+                const head = [
+                    [
+                        { content: 'Project', colSpan: 2, styles: { halign: 'center' } },
+                        { content: 'School', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                        { content: 'Presenters', colSpan: 2, styles: { halign: 'center' } },
+                        { content: 'Score Averages', colSpan: 3, styles: { halign: 'center' } },
+                        { content: 'Total Score', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                        { content: 'Points', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                        { content: 'Rank', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                    ],
+                    ['Reg. No', 'Title', 'Student 1', 'Student 2', 'Sec A', 'Sec B', 'Sec C']
+                ];
+
+                const body = projectsInCategory.map(p => [
+                    p.projectRegistrationNumber,
+                    p.title,
+                    p.school,
+                    p.students[0] || '',
+                    p.students[1] || '',
+                    p.scoreA?.toFixed(2) ?? 'N/A',
+                    p.scoreB?.toFixed(2) ?? 'N/A',
+                    p.scoreC?.toFixed(2) ?? 'N/A',
+                    p.totalScore.toFixed(2),
+                    p.points,
+                    p.categoryRank
+                ]);
+
+                (doc as any).autoTable({
+                    startY: 40,
+                    head: head,
+                    body: body,
+                    theme: 'grid',
+                    headStyles: { fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' },
+                });
+            });
+
+            await saveProfileOrFile(doc, `KSEF_Marksheet_${adminLevel}.pdf`);
+        } catch (error) {
+            console.error("Download failed:", error);
+            showNotification("Download failed. Please try again.", "error");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     // FIX: Implement handleExportRankingsPDF function.
-    const handleExportRankingsPDF = () => {
+    const handleExportRankingsPDF = async () => {
         if (!user || !scopedRankingData.relevantEntities.length) {
             showNotification("No ranking data available to export.", "error");
             return;
         }
 
-        const doc = new jsPDF();
-        const year = new Date().getFullYear();
-        const titlePart = `KSEF ${adminLevel} Competitions`.toUpperCase();
+        setIsDownloading(true);
+        // Small timeout to allow UI update
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        doc.setFontSize(16);
-        doc.text("THE KENYA SCIENCE AND ENGINEERING FAIR (KSEF)", 105, 12, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text(titlePart, 105, 18, { align: 'center' });
-        doc.setFontSize(14);
-        doc.text(`${scopedRankingData.entityType} Rankings`, 105, 26, { align: 'center' });
+        try {
+            const doc = new jsPDF();
+            const year = new Date().getFullYear();
+            const titlePart = `KSEF ${adminLevel} Competitions`.toUpperCase();
 
-        const head = [[scopedRankingData.entityType, 'Total Points', 'Rank']];
-        const body = scopedRankingData.relevantEntities.map(entity => [entity.name, entity.totalPoints.toFixed(0), entity.rank]);
+            doc.setFontSize(16);
+            doc.text("THE KENYA SCIENCE AND ENGINEERING FAIR (KSEF)", 105, 12, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text(titlePart, 105, 18, { align: 'center' });
+            doc.setFontSize(14);
+            doc.text(`${scopedRankingData.entityType} Rankings`, 105, 26, { align: 'center' });
 
-        (doc as any).autoTable({
-            startY: 35,
-            head: head,
-            body: body,
-            theme: 'grid',
-            headStyles: { fillColor: [0, 52, 89], textColor: 255 },
-        });
+            const head = [[scopedRankingData.entityType, 'Total Points', 'Rank']];
+            const body = scopedRankingData.relevantEntities.map(entity => [entity.name, entity.totalPoints.toFixed(0), entity.rank]);
 
-        doc.save(`KSEF_${adminLevel}_${scopedRankingData.entityType}_Rankings.pdf`);
+            (doc as any).autoTable({
+                startY: 35,
+                head: head,
+                body: body,
+                theme: 'grid',
+                headStyles: { fillColor: [0, 52, 89], textColor: 255 },
+            });
+
+            await saveProfileOrFile(doc, `KSEF_${adminLevel}_${scopedRankingData.entityType}_Rankings.pdf`);
+        } catch (error) {
+            console.error("Download failed:", error);
+            showNotification("Download failed. Please try again.", "error");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     const handleDownloadCertificates = async () => {
@@ -556,140 +580,50 @@ const AdminDashboard: React.FC = () => {
             return;
         }
 
-        // For other levels, proceed with normal certificate generation
-        if (!nextLevel) return;
+        setIsDownloading(true);
+        showNotification("Generating certificates... This may take a while.", "info");
+        // Small timeout to allow UI update
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        const qualifiedProjects = projectsAtViewingLevel.filter(p => levelOrder.indexOf(p.currentLevel) > viewingLevelIndex);
+        try {
 
-        if (qualifiedProjects.length === 0) {
-            showNotification('No qualified projects found to generate certificates.', 'info');
-            return;
-        }
+            // For other levels, proceed with normal certificate generation
+            if (!nextLevel) return;
 
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        const patronMap: Map<string, User> = new Map(users.filter(u => u.roles.includes(UserRole.PATRON)).map(p => [p.id, p]));
+            const qualifiedProjects = projectsAtViewingLevel.filter(p => levelOrder.indexOf(p.currentLevel) > viewingLevelIndex);
 
-        let isFirstPage = true;
-
-        for (const project of qualifiedProjects) {
-            const levelFrom = getLevelQualifiedFrom(project.currentLevel);
-            if (!levelFrom) continue;
-
-            // School Certificate
-            if (!isFirstPage) doc.addPage();
-            await addCertificatePage({
-                doc,
-                name: project.school,
-                type: 'School',
-                school: project.school,
-                levelFrom: viewingLevel, // Use current viewing level for levelFrom
-                levelTo: project.currentLevel,
-                editionName: activeEdition.name,
-                region: project.region,
-                county: project.county,
-                subCounty: project.subCounty
-            });
-            isFirstPage = false;
-
-            // Patron Certificate
-            const patron = patronMap.get(project.patronId || '');
-            if (patron) {
-                doc.addPage();
-                await addCertificatePage({
-                    doc,
-                    name: patron.name,
-                    type: 'Patron',
-                    projectTitle: project.title,
-                    school: project.school,
-                    levelFrom: viewingLevel, // Use current viewing level for levelFrom
-                    levelTo: project.currentLevel,
-                    editionName: activeEdition.name,
-                    region: project.region,
-                    county: project.county,
-                    subCounty: project.subCounty,
-                    tscNumber: patron.tscNumber,
-                    idNumber: patron.idNumber,
-                    category: project.category
-                });
+            if (qualifiedProjects.length === 0) {
+                showNotification('No qualified projects found to generate certificates.', 'info');
+                return;
             }
 
-            // Student Certificates
-            for (const studentName of project.students) {
-                doc.addPage();
-                await addCertificatePage({
-                    doc,
-                    name: studentName,
-                    type: 'Student',
-                    projectTitle: project.title,
-                    school: project.school,
-                    levelFrom: viewingLevel, // Use current viewing level for levelFrom
-                    levelTo: project.currentLevel,
-                    editionName: activeEdition.name,
-                    region: project.region,
-                    county: project.county,
-                    subCounty: project.subCounty,
-                    category: project.category
-                });
-            }
-        }
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const patronMap: Map<string, User> = new Map(users.filter(u => u.roles.includes(UserRole.PATRON)).map(p => [p.id, p]));
 
-        doc.save(`KSEF_${viewingLevel}_Participant_Certificates.pdf`);
-    };
+            let isFirstPage = true;
 
-    const generateNationalCertificates = async () => {
-        if (!activeEdition) return;
+            for (const project of qualifiedProjects) {
+                const levelFrom = getLevelQualifiedFrom(project.currentLevel);
+                if (!levelFrom) continue;
 
-        // First, get the ranked projects data
-        const rankingData = calculateRankingsAndPointsForProjects(projectsAtViewingLevel, CompetitionLevel.NATIONAL);
-        const rankedProjects = rankingData.projectsWithPoints;
-
-        // Group projects by category
-        const projectsByCategory: Record<string, typeof rankedProjects> = {};
-
-        rankedProjects.forEach(project => {
-            if (!projectsByCategory[project.category]) {
-                projectsByCategory[project.category] = [];
-            }
-            projectsByCategory[project.category].push(project);
-        });
-
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        const patronMap: Map<string, User> = new Map(users.filter(u => u.roles.includes(UserRole.PATRON)).map(p => [p.id, p]));
-
-        let isFirstPage = true;
-
-        // Process each category
-        for (const [category, categoryProjects] of Object.entries(projectsByCategory)) {
-            // Sort projects by their category rank
-            const sortedProjects = [...categoryProjects].sort((a, b) => a.categoryRank - b.categoryRank);
-
-            // Process top 3 projects as winners
-            const topProjects = sortedProjects.slice(0, 3);
-
-            for (const [index, project] of topProjects.entries()) {
-                const position = index + 1;
-                const levelFrom = CompetitionLevel.REGIONAL; // Assuming they came from regional
-
-                // School Certificate for Top 3
+                // School Certificate
                 if (!isFirstPage) doc.addPage();
                 await addCertificatePage({
                     doc,
                     name: project.school,
                     type: 'School',
                     school: project.school,
-                    levelFrom: CompetitionLevel.NATIONAL,
-                    levelTo: CompetitionLevel.NATIONAL,
+                    levelFrom: viewingLevel, // Use current viewing level for levelFrom
+                    levelTo: project.currentLevel,
                     editionName: activeEdition.name,
                     region: project.region,
                     county: project.county,
-                    subCounty: project.subCounty,
-                    award: `Position ${position} - ${category}`,
-                    isWinner: true
+                    subCounty: project.subCounty
                 });
                 isFirstPage = false;
 
-                // Patron Certificate for Top 3
-                const patron = project.patronId ? patronMap.get(project.patronId) : null;
+                // Patron Certificate
+                const patron = patronMap.get(project.patronId || '');
                 if (patron) {
                     doc.addPage();
                     await addCertificatePage({
@@ -698,21 +632,19 @@ const AdminDashboard: React.FC = () => {
                         type: 'Patron',
                         projectTitle: project.title,
                         school: project.school,
-                        levelFrom: CompetitionLevel.NATIONAL,
-                        levelTo: CompetitionLevel.NATIONAL,
+                        levelFrom: viewingLevel, // Use current viewing level for levelFrom
+                        levelTo: project.currentLevel,
                         editionName: activeEdition.name,
                         region: project.region,
                         county: project.county,
                         subCounty: project.subCounty,
                         tscNumber: patron.tscNumber,
                         idNumber: patron.idNumber,
-                        category: project.category,
-                        award: `Position ${position} - ${category}`,
-                        isWinner: true
+                        category: project.category
                     });
                 }
 
-                // Student Certificates for Top 3
+                // Student Certificates
                 for (const studentName of project.students) {
                     doc.addPage();
                     await addCertificatePage({
@@ -721,85 +653,203 @@ const AdminDashboard: React.FC = () => {
                         type: 'Student',
                         projectTitle: project.title,
                         school: project.school,
-                        levelFrom: CompetitionLevel.NATIONAL,
-                        levelTo: CompetitionLevel.NATIONAL,
+                        levelFrom: viewingLevel, // Use current viewing level for levelFrom
+                        levelTo: project.currentLevel,
                         editionName: activeEdition.name,
                         region: project.region,
                         county: project.county,
                         subCounty: project.subCounty,
-                        category: project.category,
-                        award: `Position ${position} - ${category}`,
-                        isWinner: true
+                        category: project.category
                     });
                 }
             }
 
-            // Process remaining projects as participants
-            const remainingProjects = sortedProjects.slice(3);
-
-            for (const project of remainingProjects) {
-                // School Certificate for Participants
-                doc.addPage();
-                await addCertificatePage({
-                    doc,
-                    name: project.school,
-                    type: 'School',
-                    school: project.school,
-                    levelFrom: CompetitionLevel.REGIONAL,
-                    levelTo: CompetitionLevel.NATIONAL,
-                    editionName: activeEdition.name,
-                    region: project.region,
-                    county: project.county,
-                    subCounty: project.subCounty,
-                    isParticipant: true
-                });
-
-                // Patron Certificate for Participants
-                const patron = project.patronId ? patronMap.get(project.patronId) : null;
-                if (patron) {
-                    doc.addPage();
-                    await addCertificatePage({
-                        doc,
-                        name: patron.name,
-                        type: 'Patron',
-                        projectTitle: project.title,
-                        school: project.school,
-                        levelFrom: CompetitionLevel.REGIONAL,
-                        levelTo: CompetitionLevel.NATIONAL,
-                        editionName: activeEdition.name,
-                        region: project.region,
-                        county: project.county,
-                        subCounty: project.subCounty,
-                        tscNumber: patron.tscNumber,
-                        idNumber: patron.idNumber,
-                        category: project.category,
-                        isParticipant: true
-                    });
-                }
-
-                // Student Certificates for Participants
-                for (const studentName of project.students) {
-                    doc.addPage();
-                    await addCertificatePage({
-                        doc,
-                        name: studentName,
-                        type: 'Student',
-                        projectTitle: project.title,
-                        school: project.school,
-                        levelFrom: CompetitionLevel.REGIONAL,
-                        levelTo: CompetitionLevel.NATIONAL,
-                        editionName: activeEdition.name,
-                        region: project.region,
-                        county: project.county,
-                        subCounty: project.subCounty,
-                        category: project.category,
-                        isParticipant: true
-                    });
-                }
-            }
+            await saveProfileOrFile(doc, `KSEF_${viewingLevel}_Participant_Certificates.pdf`);
+        } catch (error) {
+            console.error("Certificate generation failed:", error);
+            showNotification("Failed to generate certificates. Please try again.", "error");
+        } finally {
+            setIsDownloading(false);
         }
+    };
 
-        doc.save(`KSEF_NATIONAL_CERTIFICATES_${new Date().toISOString().split('T')[0]}.pdf`);
+    const generateNationalCertificates = async () => {
+        if (!activeEdition) return;
+
+        setIsDownloading(true);
+        showNotification("Generating national certificates... This may take a while.", "info");
+        // Small timeout
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+
+            // First, get the ranked projects data
+            const rankingData = calculateRankingsAndPointsForProjects(projectsAtViewingLevel, CompetitionLevel.NATIONAL);
+            const rankedProjects = rankingData.projectsWithPoints;
+
+            // Group projects by category
+            const projectsByCategory: Record<string, typeof rankedProjects> = {};
+
+            rankedProjects.forEach(project => {
+                if (!projectsByCategory[project.category]) {
+                    projectsByCategory[project.category] = [];
+                }
+                projectsByCategory[project.category].push(project);
+            });
+
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const patronMap: Map<string, User> = new Map(users.filter(u => u.roles.includes(UserRole.PATRON)).map(p => [p.id, p]));
+
+            let isFirstPage = true;
+
+            // Process each category
+            for (const [category, categoryProjects] of Object.entries(projectsByCategory)) {
+                // Sort projects by their category rank
+                const sortedProjects = [...categoryProjects].sort((a, b) => a.categoryRank - b.categoryRank);
+
+                // Process top 3 projects as winners
+                const topProjects = sortedProjects.slice(0, 3);
+
+                for (const [index, project] of topProjects.entries()) {
+                    const position = index + 1;
+                    const levelFrom = CompetitionLevel.REGIONAL; // Assuming they came from regional
+
+                    // School Certificate for Top 3
+                    if (!isFirstPage) doc.addPage();
+                    await addCertificatePage({
+                        doc,
+                        name: project.school,
+                        type: 'School',
+                        school: project.school,
+                        levelFrom: CompetitionLevel.NATIONAL,
+                        levelTo: CompetitionLevel.NATIONAL,
+                        editionName: activeEdition.name,
+                        region: project.region,
+                        county: project.county,
+                        subCounty: project.subCounty,
+                        award: `Position ${position} - ${category}`,
+                        isWinner: true
+                    });
+                    isFirstPage = false;
+
+                    // Patron Certificate for Top 3
+                    const patron = project.patronId ? patronMap.get(project.patronId) : null;
+                    if (patron) {
+                        doc.addPage();
+                        await addCertificatePage({
+                            doc,
+                            name: patron.name,
+                            type: 'Patron',
+                            projectTitle: project.title,
+                            school: project.school,
+                            levelFrom: CompetitionLevel.NATIONAL,
+                            levelTo: CompetitionLevel.NATIONAL,
+                            editionName: activeEdition.name,
+                            region: project.region,
+                            county: project.county,
+                            subCounty: project.subCounty,
+                            tscNumber: patron.tscNumber,
+                            idNumber: patron.idNumber,
+                            category: project.category,
+                            award: `Position ${position} - ${category}`,
+                            isWinner: true
+                        });
+                    }
+
+                    // Student Certificates for Top 3
+                    for (const studentName of project.students) {
+                        doc.addPage();
+                        await addCertificatePage({
+                            doc,
+                            name: studentName,
+                            type: 'Student',
+                            projectTitle: project.title,
+                            school: project.school,
+                            levelFrom: CompetitionLevel.NATIONAL,
+                            levelTo: CompetitionLevel.NATIONAL,
+                            editionName: activeEdition.name,
+                            region: project.region,
+                            county: project.county,
+                            subCounty: project.subCounty,
+                            category: project.category,
+                            award: `Position ${position} - ${category}`,
+                            isWinner: true
+                        });
+                    }
+                }
+
+                // Process remaining projects as participants
+                const remainingProjects = sortedProjects.slice(3);
+
+                for (const project of remainingProjects) {
+                    // School Certificate for Participants
+                    doc.addPage();
+                    await addCertificatePage({
+                        doc,
+                        name: project.school,
+                        type: 'School',
+                        school: project.school,
+                        levelFrom: CompetitionLevel.REGIONAL,
+                        levelTo: CompetitionLevel.NATIONAL,
+                        editionName: activeEdition.name,
+                        region: project.region,
+                        county: project.county,
+                        subCounty: project.subCounty,
+                        isParticipant: true
+                    });
+
+                    // Patron Certificate for Participants
+                    const patron = project.patronId ? patronMap.get(project.patronId) : null;
+                    if (patron) {
+                        doc.addPage();
+                        await addCertificatePage({
+                            doc,
+                            name: patron.name,
+                            type: 'Patron',
+                            projectTitle: project.title,
+                            school: project.school,
+                            levelFrom: CompetitionLevel.REGIONAL,
+                            levelTo: CompetitionLevel.NATIONAL,
+                            editionName: activeEdition.name,
+                            region: project.region,
+                            county: project.county,
+                            subCounty: project.subCounty,
+                            tscNumber: patron.tscNumber,
+                            idNumber: patron.idNumber,
+                            category: project.category,
+                            isParticipant: true
+                        });
+                    }
+
+                    // Student Certificates for Participants
+                    for (const studentName of project.students) {
+                        doc.addPage();
+                        await addCertificatePage({
+                            doc,
+                            name: studentName,
+                            type: 'Student',
+                            projectTitle: project.title,
+                            school: project.school,
+                            levelFrom: CompetitionLevel.REGIONAL,
+                            levelTo: CompetitionLevel.NATIONAL,
+                            editionName: activeEdition.name,
+                            region: project.region,
+                            county: project.county,
+                            subCounty: project.subCounty,
+                            category: project.category,
+                            isParticipant: true
+                        });
+                    }
+                }
+            }
+
+            await saveProfileOrFile(doc, `KSEF_NATIONAL_CERTIFICATES_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error("National Certificate generation failed:", error);
+            showNotification("Failed to generate national certificates. Please try again.", "error");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     const handleDownloadJudgeCertificates = async () => {
@@ -812,34 +862,45 @@ const AdminDashboard: React.FC = () => {
             return;
         }
 
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        setIsDownloading(true);
+        showNotification("Generating judge certificates... This may take a while.", "info");
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        for (const [index, judge] of judgesToCertify.entries()) {
-            if (index > 0) doc.addPage();
+        try {
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-            const judgeAssignments = assignments.filter(a => a.judgeId === judge.id && a.competitionLevel === viewingLevel && !a.isArchived);
-            const projectIds = [...new Set(judgeAssignments.map(a => a.projectId))];
-            const judgeCategories = [...new Set(projects
-                .filter(p => projectIds.includes(p.id))
-                .map(p => p.category)
-            )];
+            for (const [index, judge] of judgesToCertify.entries()) {
+                if (index > 0) doc.addPage();
 
-            await addCertificatePage({
-                doc,
-                name: judge.name,
-                type: 'Judge',
-                levelFrom: viewingLevel, // The level they judged
-                editionName: activeEdition.name,
-                region: judge.workRegion || judge.region,
-                county: judge.workCounty || judge.county,
-                subCounty: judge.workSubCounty || judge.subCounty,
-                tscNumber: judge.tscNumber,
-                idNumber: judge.idNumber,
-                category: judgeCategories.join(', '),
-            });
+                const judgeAssignments = assignments.filter(a => a.judgeId === judge.id && a.competitionLevel === viewingLevel && !a.isArchived);
+                const projectIds = [...new Set(judgeAssignments.map(a => a.projectId))];
+                const judgeCategories = [...new Set(projects
+                    .filter(p => projectIds.includes(p.id))
+                    .map(p => p.category)
+                )];
+
+                await addCertificatePage({
+                    doc,
+                    name: judge.name,
+                    type: 'Judge',
+                    levelFrom: viewingLevel, // The level they judged
+                    editionName: activeEdition.name,
+                    region: judge.workRegion || judge.region,
+                    county: judge.workCounty || judge.county,
+                    subCounty: judge.workSubCounty || judge.subCounty,
+                    tscNumber: judge.tscNumber,
+                    idNumber: judge.idNumber,
+                    category: judgeCategories.join(', '),
+                });
+            }
+
+            await saveProfileOrFile(doc, `KSEF_${viewingLevel}_Judge_Certificates.pdf`);
+        } catch (error) {
+            console.error("Judge Certificate generation failed:", error);
+            showNotification("Failed to generate judge certificates. Please try again.", "error");
+        } finally {
+            setIsDownloading(false);
         }
-
-        doc.save(`KSEF_${viewingLevel}_Judge_Certificates.pdf`);
     };
 
     // Show loading spinner while data is being fetched
@@ -990,7 +1051,17 @@ const AdminDashboard: React.FC = () => {
                             {publishMessage.text}
                         </div>
                     )}
-                    <div className="flex flex-wrap gap-4">
+                    <div className="flex gap-2">
+                        <Button onClick={handleDownloadMarksheetsPDF} disabled={isDownloading}>
+                            {isDownloading ? 'Processing...' : 'Download Results Marksheets (PDF)'}
+                        </Button>
+                        {haveResultsBeenPublished && (
+                            <Button onClick={handleDownloadCertificates} variant="secondary" disabled={isDownloading}>
+                                {isDownloading ? 'Generating...' : 'Generate Certificates (Bulk)'}
+                            </Button>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap gap-4 mt-4">
                         {isRollbackPossible && !isHistoricalView && (
                             <Button
                                 onClick={() => setUnpublishConfirmModalOpen(true)}
@@ -1073,12 +1144,18 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                     <h3 className="text-lg font-semibold text-text-light dark:text-text-dark mb-4">Reporting & Exports</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Button onClick={handleDownloadMarksheetsPDF} variant="secondary" className="flex items-center justify-center gap-2"><FileDown /> Download Marksheets (PDF)</Button>
+                        <Button onClick={handleDownloadMarksheetsPDF} variant="secondary" disabled={isDownloading} className="flex items-center justify-center gap-2">
+                            {isDownloading ? <Loader2 className="animate-spin" /> : <FileDown />} {isDownloading ? 'Processing...' : 'Download Marksheets (PDF)'}
+                        </Button>
                         <Link to="/reporting">
-                            <Button variant="secondary" className="w-full flex items-center justify-center gap-2"><FileText /> Generate Broadsheets (PDF)</Button>
+                            <Button variant="secondary" disabled={isDownloading} className="w-full flex items-center justify-center gap-2"><FileText /> Generate Broadsheets (PDF)</Button>
                         </Link>
-                        <Button onClick={handleExportRankingsPDF} variant="secondary" className="w-full flex items-center justify-center gap-2"><BarChart /> Export School Rankings (PDF)</Button>
-                        <Button onClick={handleDownloadJudgeCertificates} variant="secondary" className="w-full flex items-center justify-center gap-2"><UserCheck /> Download Judge Certificates (PDF)</Button>
+                        <Button onClick={handleExportRankingsPDF} variant="secondary" disabled={isDownloading} className="w-full flex items-center justify-center gap-2">
+                            {isDownloading ? <Loader2 className="animate-spin" /> : <BarChart />} {isDownloading ? 'Processing...' : 'Export School Rankings (PDF)'}
+                        </Button>
+                        <Button onClick={handleDownloadJudgeCertificates} variant="secondary" disabled={isDownloading} className="w-full flex items-center justify-center gap-2">
+                            {isDownloading ? <Loader2 className="animate-spin" /> : <UserCheck />} {isDownloading ? 'Processing...' : 'Download Judge Certificates (PDF)'}
+                        </Button>
                     </div>
                 </Card>
                 <RecentActivityCard notifications={myNotifications} onRead={markAuditLogAsRead} />
