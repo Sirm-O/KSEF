@@ -38,7 +38,7 @@ const toTitleCase = (str: string): string => {
 const ProjectForm: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
-    const { user, projects, addProject, updateProject, submissionDeadline, activeEdition, isHistoricalView, isJudgingStarted, editions } = useContext(AppContext);
+    const { user, projects, editions, createProject, updateProject, allDeadlines, isSubmissionPeriodActive, geminiApiKey, addProject, submissionDeadline, activeEdition, isHistoricalView, isJudgingStarted } = useContext(AppContext);
 
     const isEditing = Boolean(projectId);
     const isPastDeadline = useMemo(() => submissionDeadline && new Date() > new Date(submissionDeadline), [submissionDeadline]);
@@ -217,6 +217,10 @@ const ProjectForm: React.FC = () => {
         }
     }
 
+    const handleAbstractChange = (text: string) => {
+        setFormData(prev => ({ ...prev, abstract: text }));
+    };
+
     const handleAnalysisComplete = (abstract: string, aiResult: any, plagiarismResult: any) => {
         setFormData(prev => ({
             ...prev,
@@ -354,7 +358,8 @@ const ProjectForm: React.FC = () => {
                             existingProjects={projects}
                             editions={editions}
                             onAnalysisComplete={handleAnalysisComplete}
-                            onAbstractChange={(text) => setFormData(prev => ({ ...prev, abstract: text }))}
+                            onAbstractChange={handleAbstractChange}
+                            geminiApiKey={geminiApiKey}
                         />
                         {analysisResult && (
                             <div className="mt-4 flex justify-end">

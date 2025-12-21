@@ -99,7 +99,7 @@ const RejectProjectModal: React.FC<{ project: Project; onClose: () => void; onCo
 };
 
 const ProjectsPage: React.FC = () => {
-    const { user, projects, assignments, getProjectJudgingProgress, calculateProjectScores, viewingLevel, updateProject, editions, isHistoricalView } = useContext(AppContext);
+    const { user, projects, assignments, getProjectJudgingProgress, calculateProjectScores, viewingLevel, updateProject, editions, isHistoricalView, geminiApiKey } = useContext(AppContext);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -296,7 +296,7 @@ const ProjectsPage: React.FC = () => {
         setAnalyzingProjectId(project.id);
         try {
             // Run AI Analysis
-            const aiResult = await analyzeAbstract(project.abstract);
+            const aiResult = await analyzeAbstract(project.abstract, geminiApiKey);
 
             // Run Plagiarism Check
             const plagiarismResult = checkPlagiarism(project.abstract, projects.filter(p => p.id !== project.id), editions);
@@ -337,7 +337,7 @@ const ProjectsPage: React.FC = () => {
         for (let i = 0; i < pendingProjects.length; i++) {
             const project = pendingProjects[i];
             try {
-                const aiResult = await analyzeAbstract(project.abstract!);
+                const aiResult = await analyzeAbstract(project.abstract!, geminiApiKey);
                 const plagiarismResult = checkPlagiarism(project.abstract!, projects.filter(p => p.id !== project.id), editions);
 
                 updateProject({

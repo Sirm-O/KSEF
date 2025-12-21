@@ -2,11 +2,12 @@ import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AppContext, JudgingTimerSettings, JudgingHoursSettings } from '../context/AppContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import { Bot, Clock, Info, Sun, Moon as MoonIcon } from 'lucide-react';
+import { Bot, Clock, Info, Sun, Moon as MoonIcon, Key, Save } from 'lucide-react';
 import { UserRole } from '../types';
+import { supabase } from '../supabaseClient';
 
 const getDeadlineKeyForAdmin = (admin: { currentRole: UserRole, region?: string, county?: string, subCounty?: string }): string => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
     switch (admin.currentRole) {
         case UserRole.REGIONAL_ADMIN:
             return `submission_deadline_region_${formatForKy(admin.region)}`;
@@ -21,26 +22,26 @@ const getDeadlineKeyForAdmin = (admin: { currentRole: UserRole, region?: string,
 
 
 const SettingsPage: React.FC = () => {
-    const { 
-        user, 
-        roboticsMissions, setRoboticsMissions, 
-        allDeadlines, setSubmissionDeadline, 
+    const {
+        user,
+        roboticsMissions, setRoboticsMissions,
+        allDeadlines, setSubmissionDeadline,
         applicableTimerSettings, allTimerSettings, setJudgingTimerSettings,
         applicableJudgingHours, allJudgingHours, setJudgingHours
     } = useContext(AppContext);
-    
+
     const [mission1, setMission1] = useState('');
     const [mission2, setMission2] = useState('');
     const [myDeadline, setMyDeadline] = useState('');
     const [timers, setTimers] = useState<JudgingTimerSettings>(applicableTimerSettings);
     // FIX: Renamed useState setter to avoid conflict with context function.
     const [judgingHours, setLocalJudgingHours] = useState<JudgingHoursSettings>(applicableJudgingHours);
-    
+
     const isNationalOrSuperAdmin = useMemo(() => user && [UserRole.SUPER_ADMIN, UserRole.NATIONAL_ADMIN].includes(user.currentRole), [user]);
 
     const { myDeadlineKey, myDeadlineLabel, parentDeadlines } = useMemo(() => {
         if (!user) return { myDeadlineKey: '', myDeadlineLabel: '', parentDeadlines: [] };
-        
+
         const key = getDeadlineKeyForAdmin(user);
         let label = 'National Project Submission Deadline';
         const parents: { label: string; value: string | null }[] = [];
@@ -52,7 +53,7 @@ const SettingsPage: React.FC = () => {
                 break;
             case UserRole.COUNTY_ADMIN:
                 label = `Deadline for ${user.county} County`;
-                 const regionKey = `submission_deadline_region_${user.region?.toLowerCase().replace(/\s+/g, '_')}`;
+                const regionKey = `submission_deadline_region_${user.region?.toLowerCase().replace(/\s+/g, '_')}`;
                 parents.push({ label: 'National Deadline', value: allDeadlines['submission_deadline'] || null });
                 parents.push({ label: `${user.region} Regional Deadline`, value: allDeadlines[regionKey] || null });
                 break;
@@ -65,7 +66,7 @@ const SettingsPage: React.FC = () => {
                 parents.push({ label: `${user.county} County Deadline`, value: allDeadlines[countyKey] || null });
                 break;
         }
-        
+
         return { myDeadlineKey: key, myDeadlineLabel: label, parentDeadlines: parents };
 
     }, [user, allDeadlines]);
@@ -82,7 +83,7 @@ const SettingsPage: React.FC = () => {
         const parents: { label: string; settings: Partial<JudgingTimerSettings> | null }[] = [];
 
         if (user.currentRole === UserRole.SUB_COUNTY_ADMIN) {
-             parents.push({ label: `${user.county} County`, settings: getSettings(`_county_${user.county?.toLowerCase().replace(/\s+/g, '_')}`) });
+            parents.push({ label: `${user.county} County`, settings: getSettings(`_county_${user.county?.toLowerCase().replace(/\s+/g, '_')}`) });
         }
         if ([UserRole.SUB_COUNTY_ADMIN, UserRole.COUNTY_ADMIN].includes(user.currentRole)) {
             parents.push({ label: `${user.region} Regional`, settings: getSettings(`_region_${user.region?.toLowerCase().replace(/\s+/g, '_')}`) });
@@ -90,7 +91,7 @@ const SettingsPage: React.FC = () => {
         if ([UserRole.SUB_COUNTY_ADMIN, UserRole.COUNTY_ADMIN, UserRole.REGIONAL_ADMIN].includes(user.currentRole)) {
             parents.push({ label: 'National', settings: getSettings('') });
         }
-        
+
         return parents.filter(p => p.settings && Object.keys(p.settings).length > 0);
     }, [user, allTimerSettings]);
 
@@ -108,7 +109,7 @@ const SettingsPage: React.FC = () => {
         if ([UserRole.SUB_COUNTY_ADMIN, UserRole.COUNTY_ADMIN, UserRole.REGIONAL_ADMIN].includes(user.currentRole)) {
             parents.push({ label: 'National', settings: getSettings('') });
         }
-        
+
         return parents.filter(p => p.settings && Object.keys(p.settings).length > 0);
     }, [user, allJudgingHours]);
 
@@ -119,7 +120,7 @@ const SettingsPage: React.FC = () => {
         setTimers(applicableTimerSettings);
         // FIX: Use renamed useState setter.
         setLocalJudgingHours(applicableJudgingHours);
-        
+
         const deadlineValue = allDeadlines[myDeadlineKey];
         if (deadlineValue) {
             const date = new Date(deadlineValue);
@@ -148,7 +149,7 @@ const SettingsPage: React.FC = () => {
         const { name, value } = e.target;
         setTimers(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
     };
-    
+
     const handleSaveTimers = () => {
         setJudgingTimerSettings(timers);
     };
@@ -158,10 +159,59 @@ const SettingsPage: React.FC = () => {
         // FIX: Use renamed useState setter.
         setLocalJudgingHours(prev => ({ ...prev, [name]: value }));
     };
-    
+
     const handleSaveHours = () => {
         // FIX: Pass the local state `judgingHours` to the context function.
         setJudgingHours(judgingHours);
+    };
+
+    // --- API KEY MANAGEMENT ---
+    const [apiKey, setApiKey] = useState('');
+    const [isSavingKey, setIsSavingKey] = useState(false);
+    const [keyStatus, setKeyStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+    useEffect(() => {
+        const fetchApiKey = async () => {
+            if (isNationalOrSuperAdmin) {
+                const { data, error } = await supabase
+                    .from('settings')
+                    .select('value')
+                    .eq('key', 'gemini_api_key')
+                    .single();
+
+                if (data) {
+                    setApiKey(data.value);
+                }
+            }
+        };
+        fetchApiKey();
+    }, [isNationalOrSuperAdmin]);
+
+    const handleSaveApiKey = async () => {
+        if (!apiKey.trim()) return;
+        setIsSavingKey(true);
+        setKeyStatus('idle');
+
+        try {
+            const { error } = await supabase
+                .from('settings')
+                .upsert({ key: 'gemini_api_key', value: apiKey }, { onConflict: 'key' });
+
+            if (error) throw error;
+
+            setKeyStatus('success');
+            setTimeout(() => setKeyStatus('idle'), 3000);
+
+            // Reload window to ensure new key is picked up by AppContext if needed immediately, 
+            // though AppContext might not catch this specific change without a refresh logic.
+            // For now, simple success feedback.
+
+        } catch (error) {
+            console.error('Error saving API key:', error);
+            setKeyStatus('error');
+        } finally {
+            setIsSavingKey(false);
+        }
     };
 
 
@@ -181,7 +231,7 @@ const SettingsPage: React.FC = () => {
                     <div className="mb-4 p-3 border-l-4 border-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-r-lg space-y-1">
                         <p className="font-semibold text-sm text-blue-800 dark:text-blue-300">For Your Information:</p>
                         {parentDeadlines.map(pd => (
-                             <p key={pd.label} className="text-sm text-blue-700 dark:text-blue-400">
+                            <p key={pd.label} className="text-sm text-blue-700 dark:text-blue-400">
                                 The current {pd.label} is: <span className="font-medium">{pd.value ? new Date(pd.value).toLocaleString() : 'Not Set'}</span>
                             </p>
                         ))}
@@ -201,13 +251,13 @@ const SettingsPage: React.FC = () => {
                     </div>
                     <Button onClick={handleDeadlineSave} className="self-end">Save Deadline</Button>
                 </div>
-                {allDeadlines[myDeadlineKey] ? 
+                {allDeadlines[myDeadlineKey] ?
                     <p className="mt-2 text-sm text-green-600 dark:text-green-400">Your current deadline is set to: {new Date(allDeadlines[myDeadlineKey]).toLocaleString()}</p>
                     : <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">You have not set a specific deadline. The inherited deadline will be used.</p>
                 }
             </Card>
 
-             <Card>
+            <Card>
                 <h2 className="text-xl font-bold text-secondary dark:text-accent-green mb-2 flex items-center gap-2">
                     <Sun className="w-5 h-5" /> Active Judging Hours
                 </h2>
@@ -216,7 +266,7 @@ const SettingsPage: React.FC = () => {
                 </p>
 
                 {parentJudgingHours.length > 0 && (
-                     <div className="mb-4 p-3 border-l-4 border-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-r-lg space-y-2">
+                    <div className="mb-4 p-3 border-l-4 border-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-r-lg space-y-2">
                         <p className="font-semibold text-sm text-blue-800 dark:text-blue-300">Inherited Judging Hours:</p>
                         {parentJudgingHours.map(p => (
                             <div key={p.label}>
@@ -230,18 +280,18 @@ const SettingsPage: React.FC = () => {
                 )}
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="grid grid-cols-2 gap-4 flex-grow">
-                         <div>
+                        <div>
                             <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Time</label>
-                            <input type="time" id="startTime" name="startTime" value={judgingHours.startTime} onChange={handleHoursChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                            <input type="time" id="startTime" name="startTime" value={judgingHours.startTime} onChange={handleHoursChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                         </div>
                         <div>
                             <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Time</label>
-                            <input type="time" id="endTime" name="endTime" value={judgingHours.endTime} onChange={handleHoursChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                            <input type="time" id="endTime" name="endTime" value={judgingHours.endTime} onChange={handleHoursChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                         </div>
                     </div>
                     <Button onClick={handleSaveHours} className="self-end">Save Judging Hours</Button>
                 </div>
-                 <p className="mt-2 text-sm text-green-600 dark:text-green-400">Active judging hours for your jurisdiction are from {applicableJudgingHours.startTime} to {applicableJudgingHours.endTime}.</p>
+                <p className="mt-2 text-sm text-green-600 dark:text-green-400">Active judging hours for your jurisdiction are from {applicableJudgingHours.startTime} to {applicableJudgingHours.endTime}.</p>
             </Card>
 
             <Card>
@@ -274,24 +324,24 @@ const SettingsPage: React.FC = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="minTimeA" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Minimum Time</label>
-                                    <input type="number" id="minTimeA" name="minTimeA" value={timers.minTimeA} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                                    <input type="number" id="minTimeA" name="minTimeA" value={timers.minTimeA} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                                 </div>
                                 <div>
                                     <label htmlFor="maxTimeA" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Maximum Time</label>
-                                    <input type="number" id="maxTimeA" name="maxTimeA" value={timers.maxTimeA} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                                    <input type="number" id="maxTimeA" name="maxTimeA" value={timers.maxTimeA} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                                 </div>
                             </div>
                         </div>
-                         <div className="p-4 border rounded-lg dark:border-gray-600">
+                        <div className="p-4 border rounded-lg dark:border-gray-600">
                             <h3 className="font-semibold mb-2">Part B & C: Oral & Scientific</h3>
-                             <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="minTimeBC" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Minimum Time</label>
-                                    <input type="number" id="minTimeBC" name="minTimeBC" value={timers.minTimeBC} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                                    <input type="number" id="minTimeBC" name="minTimeBC" value={timers.minTimeBC} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                                 </div>
                                 <div>
                                     <label htmlFor="maxTimeBC" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Maximum Time</label>
-                                    <input type="number" id="maxTimeBC" name="maxTimeBC" value={timers.maxTimeBC} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600"/>
+                                    <input type="number" id="maxTimeBC" name="maxTimeBC" value={timers.maxTimeBC} onChange={handleTimerChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600" />
                                 </div>
                             </div>
                         </div>
@@ -322,21 +372,21 @@ const SettingsPage: React.FC = () => {
                 <fieldset disabled={!isNationalOrSuperAdmin} className="space-y-4 disabled:opacity-70">
                     <div>
                         <label htmlFor="mission1" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Compulsory Mission 1</label>
-                        <textarea 
-                            id="mission1" 
-                            rows={2} 
-                            value={mission1} 
-                            onChange={e => setMission1(e.target.value)} 
+                        <textarea
+                            id="mission1"
+                            rows={2}
+                            value={mission1}
+                            onChange={e => setMission1(e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-dark focus:ring-primary-dark sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600 disabled:cursor-not-allowed"
                         />
                     </div>
                     <div>
                         <label htmlFor="mission2" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Compulsory Mission 2</label>
-                        <textarea 
-                            id="mission2" 
-                            rows={2} 
-                            value={mission2} 
-                            onChange={e => setMission2(e.target.value)} 
+                        <textarea
+                            id="mission2"
+                            rows={2}
+                            value={mission2}
+                            onChange={e => setMission2(e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-dark focus:ring-primary-dark sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600 disabled:cursor-not-allowed"
                         />
                     </div>
@@ -345,6 +395,45 @@ const SettingsPage: React.FC = () => {
                     {isNationalOrSuperAdmin && <Button onClick={handleSaveMissions}>Save Missions</Button>}
                 </div>
             </Card>
+
+            {/* SYSTEM CONFIGURATION - SUPER ADMIN ONLY */}
+            {user?.currentRole === UserRole.SUPER_ADMIN && (
+                <Card>
+                    <h2 className="text-xl font-bold text-secondary dark:text-accent-green mb-2 flex items-center gap-2">
+                        <Key className="w-5 h-5" /> System Configuration
+                    </h2>
+                    <p className="text-sm text-text-muted-light dark:text-text-muted-dark mb-4">
+                        Sensitive system-wide settings. Only accessible to Super Administrators.
+                    </p>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Google Gemini API Key (AI Features)</label>
+                            <div className="flex gap-2 mt-1">
+                                <div className="relative flex-grow">
+                                    <input
+                                        type="password"
+                                        id="apiKey"
+                                        value={apiKey}
+                                        onChange={e => setApiKey(e.target.value)}
+                                        placeholder="AIza..."
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-dark focus:ring-primary-dark sm:text-sm bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark dark:border-gray-600 pr-10"
+                                    />
+                                </div>
+                                <Button onClick={handleSaveApiKey} disabled={isSavingKey} className="flex items-center gap-2">
+                                    {isSavingKey ? 'Saving...' : <><Save className="w-4 h-4" /> Save Key</>}
+                                </Button>
+                            </div>
+                            {keyStatus === 'success' && <p className="mt-1 text-sm text-green-600">API Key saved successfully.</p>}
+                            {keyStatus === 'error' && <p className="mt-1 text-sm text-red-600">Failed to save API Key.</p>}
+                            <p className="mt-2 text-xs text-text-muted-light dark:text-text-muted-dark">
+                                This key is used for AI judging comments and project analysis. Changes apply immediately to new sessions.
+                            </p>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
         </div>
     );
 };

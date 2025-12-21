@@ -13,9 +13,10 @@ interface AbstractSubmissionProps {
     editions: Edition[];
     onAnalysisComplete: (abstract: string, aiResult: AIAnalysisResult, plagiarismResult: PlagiarismResult) => void;
     onAbstractChange: (abstract: string) => void;
+    geminiApiKey?: string | null;
 }
 
-const AbstractSubmission: React.FC<AbstractSubmissionProps> = ({ initialAbstract = '', existingProjects, editions, onAnalysisComplete, onAbstractChange }) => {
+const AbstractSubmission: React.FC<AbstractSubmissionProps> = ({ initialAbstract = '', existingProjects, editions, onAnalysisComplete, onAbstractChange, geminiApiKey }) => {
     const [abstract, setAbstract] = useState(initialAbstract);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState<{ ai: AIAnalysisResult, plagiarism: PlagiarismResult } | null>(null);
@@ -49,7 +50,7 @@ const AbstractSubmission: React.FC<AbstractSubmissionProps> = ({ initialAbstract
 
         try {
             // 1. AI Analysis
-            const aiRes = await analyzeAbstract(abstract);
+            const aiRes = await analyzeAbstract(abstract, geminiApiKey);
 
             // 2. Plagiarism Check
             const plagiarismRes = checkPlagiarism(abstract, existingProjects, editions);

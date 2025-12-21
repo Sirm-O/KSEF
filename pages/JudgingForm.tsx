@@ -7,6 +7,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { AppContext, JudgingTimerSettings } from '../context/AppContext';
 // FIX: Removed `USERS` import as it is not exported from constants. The user list will be fetched from context.
 import { SCORE_SHEET, ROBOTICS_SCORE_SHEET } from '../constants';
+import { generateJudgingComments } from '../utils/aiService';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { JudgingCriterion, ProjectStatus, JudgeAssignment, UserRole, JudgingSection } from '../types';
@@ -67,12 +68,12 @@ const CriterionInput: React.FC<{
                     <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1">{details}</p>
                     {reviewScores && reviewScores.length > 0 && (
                         <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-md">
-                           <p className="text-xs font-bold flex items-center gap-1"><Users className="w-3 h-3"/> Other Judges' Total Scores:</p>
-                           <div className="flex gap-4 text-xs">
-                            {reviewScores.map((rs, i) => (
-                                <p key={i}><strong>{rs.judgeName}:</strong> <span className="text-primary">{rs.score}</span></p>
-                            ))}
-                           </div>
+                            <p className="text-xs font-bold flex items-center gap-1"><Users className="w-3 h-3" /> Other Judges' Total Scores:</p>
+                            <div className="flex gap-4 text-xs">
+                                {reviewScores.map((rs, i) => (
+                                    <p key={i}><strong>{rs.judgeName}:</strong> <span className="text-primary">{rs.score}</span></p>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -99,11 +100,10 @@ const CriterionInput: React.FC<{
                                     key={opt}
                                     type="button"
                                     onClick={() => handleQuickSelect(opt)}
-                                    className={`w-10 h-7 text-xs font-semibold rounded-md transition-colors ${
-                                        Number(value) === opt && value !== ''
+                                    className={`w-10 h-7 text-xs font-semibold rounded-md transition-colors ${Number(value) === opt && value !== ''
                                         ? 'bg-primary text-white ring-2 ring-primary-dark'
                                         : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                    }`}
+                                        }`}
                                 >
                                     {opt}
                                 </button>
@@ -120,8 +120,8 @@ const CriterionInput: React.FC<{
 const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 // --- NEW --- Custom type for the robotics sheet
-type RoboticsJudgingSection = JudgingSection & { 
-    isRoboticsMissions?: boolean; 
+type RoboticsJudgingSection = JudgingSection & {
+    isRoboticsMissions?: boolean;
     roboticsMissions?: {
         compulsory: { id: number, text: string, maxScore: number }[];
         studentGenerated: { id: number, text: string, maxScore: number }[];
@@ -142,7 +142,7 @@ const MissionInput: React.FC<{
     onDescriptionChange?: (id: number, val: string) => void;
 }> = ({ mission, value, error, onUpdate, onValidate, onKeyDown, isStudentMission, description, onDescriptionChange }) => {
     return (
-         <div className={`p-4 bg-background-light dark:bg-background-dark rounded-lg border ${error ? 'border-red-500 shadow-md' : 'dark:border-gray-700'} transition-all duration-300 hover:shadow-md`}>
+        <div className={`p-4 bg-background-light dark:bg-background-dark rounded-lg border ${error ? 'border-red-500 shadow-md' : 'dark:border-gray-700'} transition-all duration-300 hover:shadow-md`}>
             <div className="flex flex-col md:flex-row gap-4 justify-between">
                 <div className="flex-1">
                     {isStudentMission ? (
@@ -160,7 +160,7 @@ const MissionInput: React.FC<{
                 </div>
                 <div className="flex flex-col items-start md:items-end gap-2" style={{ minWidth: '180px' }}>
                     <div className="flex items-center gap-2">
-                         <input
+                        <input
                             type="text"
                             inputMode="decimal"
                             value={value}
@@ -196,8 +196,8 @@ const RoboticsMissionsInput: React.FC<{
                 <h4 className="font-semibold text-lg text-text-light dark:text-text-dark mb-2">(a.) COMPULSORY MISSIONS</h4>
                 <div className="space-y-3">
                     {missionData.compulsory.map(mission => (
-                        <MissionInput 
-                            key={mission.id} 
+                        <MissionInput
+                            key={mission.id}
                             mission={mission}
                             value={scores[mission.id] ?? ''}
                             error={errors[mission.id]}
@@ -215,8 +215,8 @@ const RoboticsMissionsInput: React.FC<{
                 </p>
                 <div className="space-y-3">
                     {missionData.studentGenerated.map(mission => (
-                         <MissionInput 
-                            key={mission.id} 
+                        <MissionInput
+                            key={mission.id}
                             mission={mission}
                             value={scores[mission.id] ?? ''}
                             error={errors[mission.id]}
@@ -239,12 +239,12 @@ export const JudgingForm: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const { 
-        user, projects, users, assignments, startJudging, updateAssignment, submitAssignmentScore, 
-        setActiveJudgingInfo, roboticsMissions, applicableTimerSettings, handleJudgeTimeout, 
+    const {
+        user, projects, users, assignments, startJudging, updateAssignment, submitAssignmentScore,
+        setActiveJudgingInfo, roboticsMissions, applicableTimerSettings, handleJudgeTimeout,
         showNotification, isWithinJudgingHours,
         // FIX: Add viewingEdition and viewingLevel from context.
-        viewingEdition, viewingLevel
+        viewingEdition, viewingLevel, geminiApiKey
     } = useContext(AppContext);
 
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -261,7 +261,7 @@ export const JudgingForm: React.FC = () => {
     const [conflictError, setConflictError] = useState<string | null>(null);
     const [isAiLoading, setIsAiLoading] = useState(false);
     const [isSessionExpired, setIsSessionExpired] = useState(false);
-    
+
     // --- TIMER STATE ---
     const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
     const [displayTime, setDisplayTime] = useState(0);
@@ -298,7 +298,7 @@ export const JudgingForm: React.FC = () => {
             window.removeEventListener('scroll', resetInactivityTimer);
         };
     }, [resetInactivityTimer]);
-    
+
     const handleContinueJudging = () => {
         setShowInactivityModal(false);
         // FIX: Pass undefined to resetInactivityTimer to satisfy its function signature, resolving "Expected 1 arguments, but got 0" error.
@@ -314,10 +314,10 @@ export const JudgingForm: React.FC = () => {
 
     const { project, assignment, sections, otherJudgeAssignments } = useMemo(() => {
         if (!projectId || !user) return { project: null, assignment: null, sections: [], otherJudgeAssignments: [] };
-        
+
         const currentProject = projects.find(p => p.id === projectId);
         const isRobotics = currentProject?.category === 'Robotics';
-        
+
         let currentAssignment = assignments.find(a => a.projectId === projectId && a.judgeId === user.id && a.assignedSection === sectionParam);
 
         // FIX: Add missing edition_id and competitionLevel to the temporary assignment object.
@@ -361,8 +361,8 @@ export const JudgingForm: React.FC = () => {
 
         let otherAssignments: JudgeAssignment[] = [];
         if (isReviewMode && currentProject && currentSections.length > 0) {
-             otherAssignments = assignments.filter(a => 
-                a.projectId === projectId && 
+            otherAssignments = assignments.filter(a =>
+                a.projectId === projectId &&
                 a.assignedSection === currentAssignment?.assignedSection &&
                 a.status === ProjectStatus.COMPLETED
             );
@@ -370,7 +370,7 @@ export const JudgingForm: React.FC = () => {
 
         return { project: currentProject, assignment: currentAssignment, sections: currentSections, otherJudgeAssignments: otherAssignments };
     }, [projectId, user, projects, assignments, sectionParam, isReviewMode, roboticsMissions, viewingEdition, viewingLevel]);
-    
+
     const allCriteriaAndMissions = useMemo(() => {
         return sections.flatMap(s => {
             if (s.isRoboticsMissions && s.roboticsMissions) {
@@ -393,7 +393,7 @@ export const JudgingForm: React.FC = () => {
 
     const sessionKey = useMemo(() => `judging-${projectId}-${user?.id}-${assignment?.assignedSection}`, [projectId, user?.id, assignment?.assignedSection]);
     const timerSessionKey = useMemo(() => `judging-timer-start-${projectId}-${user?.id}-${assignment?.assignedSection}`, [projectId, user?.id, assignment?.assignedSection]);
-    
+
     // Check if judging hours expire during the session
     useEffect(() => {
         const checkJudgingHours = () => {
@@ -422,7 +422,7 @@ export const JudgingForm: React.FC = () => {
             setDisplayTime(elapsedSeconds);
 
             if (elapsedSeconds > maxTime && maxTime !== Infinity) {
-                if (!isTimedOut) { 
+                if (!isTimedOut) {
                     setIsTimedOut(true);
                     showNotification(`Session timed out after ${maxTime / 60} minutes. This project has been sent for review.`, 'error', 10000);
                     handleJudgeTimeout(project.id, user!.id, assignment!.assignedSection, project.category);
@@ -442,7 +442,7 @@ export const JudgingForm: React.FC = () => {
             setConflictError(null);
         }
     }, [project, user]);
-    
+
     useEffect(() => {
         if (conflictError) return;
         const savedStateJSON = sessionStorage.getItem(sessionKey);
@@ -474,7 +474,7 @@ export const JudgingForm: React.FC = () => {
 
     useEffect(() => {
         if (sections.length > 0 && !conflictError) {
-             sessionStorage.setItem(sessionKey, JSON.stringify({ scores, studentMissionTexts, comments, recommendations }));
+            sessionStorage.setItem(sessionKey, JSON.stringify({ scores, studentMissionTexts, comments, recommendations }));
         }
     }, [scores, studentMissionTexts, comments, recommendations, sessionKey, sections, conflictError]);
 
@@ -496,7 +496,7 @@ export const JudgingForm: React.FC = () => {
             statusUpdateRef.current = assignment.projectId;
         }
     }, [assignment, sections, updateAssignment, startJudging, conflictError]);
-    
+
     const handleScoreUpdate = (criterionId: number, stringValue: string) => {
         handleFormInteraction();
         setScores(prev => ({ ...prev, [criterionId]: stringValue }));
@@ -509,10 +509,10 @@ export const JudgingForm: React.FC = () => {
             });
         }
     };
-    
+
     const handleStudentMissionTextChange = (id: number, text: string) => {
         handleFormInteraction();
-        setStudentMissionTexts(prev => ({...prev, [id]: text}));
+        setStudentMissionTexts(prev => ({ ...prev, [id]: text }));
     };
 
     const handleScoreValidation = (criterionId: number, stringValue: string, max: number, step: number) => {
@@ -525,17 +525,17 @@ export const JudgingForm: React.FC = () => {
             setScores(prev => ({ ...prev, [criterionId]: '' }));
             return;
         }
-        
+
         let validatedValue = Math.max(0, Math.min(numValue, max));
         validatedValue = parseFloat((Math.round(validatedValue / step) * step).toFixed(2));
         setScores(prev => ({ ...prev, [criterionId]: validatedValue }));
     };
-    
+
     const isBeforeMinTime = sessionStartTime !== null && displayTime < minTime;
 
     const isFormComplete = useMemo(() => {
         if (allCriteriaAndMissions.length === 0) return false;
-        
+
         const allScoresEntered = allCriteriaAndMissions.every(
             (criterion) => {
                 const score = scores[criterion.id];
@@ -544,7 +544,7 @@ export const JudgingForm: React.FC = () => {
         );
         const commentsEntered = comments.trim() !== '';
         const recommendationsEntered = recommendations.trim() !== '';
-        
+
         return allScoresEntered && commentsEntered && recommendationsEntered;
     }, [scores, comments, recommendations, allCriteriaAndMissions]);
 
@@ -581,21 +581,8 @@ Here are the scores:
             const scoreDetails = scoredCriteria.map(c => `- Criterion: "${(c as any).text}" - Score: ${scores[c.id]} / ${c.maxScore}`).join('\n');
             const fullPrompt = promptIntro + scoreDetails;
 
-            const apiResponse = await fetch('/api/generate-comments', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ prompt: fullPrompt }),
-            });
+            const feedback = await generateJudgingComments(fullPrompt, geminiApiKey);
 
-            if (!apiResponse.ok) {
-                const errorData = await apiResponse.json();
-                throw new Error(errorData.error || `Request failed with status ${apiResponse.status}`);
-            }
-
-            const feedback = await apiResponse.json();
-            
             setComments(prev => prev ? prev + `\n\n--- AI Suggestions ---\n` + feedback.comments : feedback.comments);
             setRecommendations(prev => prev ? prev + `\n\n--- AI Suggestions ---\n` + feedback.recommendations : feedback.recommendations);
 
@@ -643,23 +630,23 @@ Here are the scores:
             setGeneralError('Please fill in the Comments and Recommendations sections.');
             return;
         }
-        
+
         setErrors({});
         setGeneralError('');
         setIsSubmitting(true);
 
-        const completedAssignment: JudgeAssignment = { 
-            ...assignment, 
-            status: ProjectStatus.COMPLETED, 
+        const completedAssignment: JudgeAssignment = {
+            ...assignment,
+            status: ProjectStatus.COMPLETED,
             score: finalTotalScore,
             comments: comments,
             recommendations: recommendations,
             scoreBreakdown: scoreBreakdown,
             missionDescriptions: studentMissionTexts,
         };
-        
+
         const success = await submitAssignmentScore(completedAssignment);
-        
+
         if (success) {
             setActiveJudgingInfo(null);
             sessionStorage.removeItem(sessionKey);
@@ -697,10 +684,10 @@ Here are the scores:
     };
 
     const progressPercentage = allCriteriaAndMissions.length > 0 ? (scoredCriteriaCount / allCriteriaAndMissions.length) * 100 : 0;
-    
+
     const submitButtonTitle = isFormComplete
-    ? (isBeforeMinTime ? `You must wait at least ${minTime / 60} minutes before submitting.` : 'Submit your final marks')
-    : 'Please fill in all scores and feedback sections to submit';
+        ? (isBeforeMinTime ? `You must wait at least ${minTime / 60} minutes before submitting.` : 'Submit your final marks')
+        : 'Please fill in all scores and feedback sections to submit';
 
     if (conflictError) {
         return (
@@ -716,17 +703,17 @@ Here are the scores:
     if (!project || !assignment || sections.length === 0) {
         return <Card><p>Loading judging assignment...</p></Card>;
     }
-    
+
     const reviewScoresData = otherJudgeAssignments.map(a => {
-            const judge = users.find(u => u.id === a.judgeId);
-            return { judgeName: judge?.name || 'Unknown', score: a.score }
-        });
+        const judge = users.find(u => u.id === a.judgeId);
+        return { judgeName: judge?.name || 'Unknown', score: a.score }
+    });
 
     return (
         <fieldset disabled={isSessionExpired} className="space-y-6">
             <Modal
                 isOpen={isSessionExpired}
-                onClose={() => {}} // Non-dismissible
+                onClose={() => { }} // Non-dismissible
                 title="Judging Session Expired"
             >
                 <div className="text-center">
@@ -737,13 +724,13 @@ Here are the scores:
                 </div>
             </Modal>
             <Card className="sticky top-0 z-20">
-                 <div className="flex flex-wrap justify-between items-center gap-4">
+                <div className="flex flex-wrap justify-between items-center gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-text-light dark:text-text-dark">{project.title}</h1>
                         <p className="text-sm text-text-muted-light dark:text-text-muted-dark">{project.category} | {project.school}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className={`flex items-center gap-2 p-2 rounded-md transition-colors ${sessionStartTime === null ? 'bg-gray-100 dark:bg-gray-800' : 'bg-secondary/10' } text-secondary dark:text-accent-green`} title={`Session Timer. Min: ${minTime/60}m, Max: ${maxTime/60}m`}>
+                        <div className={`flex items-center gap-2 p-2 rounded-md transition-colors ${sessionStartTime === null ? 'bg-gray-100 dark:bg-gray-800' : 'bg-secondary/10'} text-secondary dark:text-accent-green`} title={`Session Timer. Min: ${minTime / 60}m, Max: ${maxTime / 60}m`}>
                             <Clock className={`w-5 h-5 ${sessionStartTime === null ? 'text-gray-400' : ''}`} />
                             <span className="font-mono font-semibold text-lg">
                                 {formatTime(displayTime)} / {formatTime(maxTime)}
@@ -754,8 +741,8 @@ Here are the scores:
                         <Button variant="ghost" onClick={() => navigate(-1)} className="flex items-center gap-2">
                             <ArrowLeft className="w-4 h-4" /> Back
                         </Button>
-                        <Button 
-                            onClick={handleSubmit} 
+                        <Button
+                            onClick={handleSubmit}
                             disabled={!isFormComplete || isSubmitting || isBeforeMinTime}
                             title={submitButtonTitle}
                             className="flex items-center gap-2"
@@ -764,12 +751,12 @@ Here are the scores:
                         </Button>
                     </div>
                 </div>
-                 {generalError && (
+                {generalError && (
                     <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/40 border border-red-400 rounded-md text-red-700 dark:text-red-300 flex items-center gap-2">
                         <AlertCircle className="w-5 h-5" />
                         <p>{generalError}</p>
                     </div>
-                 )}
+                )}
                 <div className="mt-4">
                     <div className="flex justify-between items-center mb-1">
                         <span className="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">Progress</span>
@@ -795,14 +782,14 @@ Here are the scores:
             {sections.map((section, index) => {
                 let lastRenderedSubSection: string | undefined = undefined;
                 return (
-                     <Card key={section.id} ref={index === 0 ? firstCriterionCardRef : undefined}>
+                    <Card key={section.id} ref={index === 0 ? firstCriterionCardRef : undefined}>
                         <div className="bg-primary/10 p-4 rounded-lg mb-4">
                             <h2 className="text-xl font-bold text-secondary dark:text-accent-green">{section.title}</h2>
                             <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1">
                                 {section.description}
                             </p>
                         </div>
-                        
+
                         {section.isRoboticsMissions ? (
                             <RoboticsMissionsInput
                                 missionData={section.roboticsMissions}
@@ -819,10 +806,10 @@ Here are the scores:
                                 {section.criteria.map(criterion => {
                                     const currentSubSection = criterion.originalSection;
                                     const showHeader = currentSubSection && currentSubSection !== lastRenderedSubSection && section.subSectionDetails;
-                                    if(showHeader) {
+                                    if (showHeader) {
                                         lastRenderedSubSection = currentSubSection;
                                     }
-                                    
+
                                     const subSectionInfo = (section.subSectionDetails && currentSubSection) ? section.subSectionDetails[currentSubSection] : null;
 
                                     return (
@@ -852,8 +839,8 @@ Here are the scores:
             })}
 
             <Card>
-                 <h3 className="text-xl font-bold text-secondary dark:text-accent-green mb-4">Feedback & Recommendations</h3>
-                 <div className="space-y-4">
+                <h3 className="text-xl font-bold text-secondary dark:text-accent-green mb-4">Feedback & Recommendations</h3>
+                <div className="space-y-4">
                     <div>
                         <div className="flex justify-between items-center mb-1">
                             <label htmlFor="comments" className="block font-medium text-text-light dark:text-text-dark">General Comments <span className="text-red-500">*</span></label>

@@ -4,7 +4,6 @@ import { KENYAN_GEOGRAPHICAL_DATA, SCORE_SHEET, ROBOTICS_SCORE_SHEET } from '../
 import { supabase, supabaseUrl, supabaseAnonKey } from '../supabaseClient';
 import { AuthChangeEvent, Session, createClient } from '@supabase/supabase-js';
 import emailjs from '@emailjs/browser';
-import { GoogleGenAI } from '@google/genai';
 
 // --- NEW HELPER ---
 const generateRandomPassword = (length = 10) => {
@@ -131,6 +130,7 @@ interface IAppContext {
     isJudgingStarted: boolean; // --- NEW ---
     applicableCertificateDesign: string | null; // --- NEW ---
     isEditionCompleted: boolean; // NEW
+    geminiApiKey: string | null; // --- NEW ---
     // --- EDITION STATE ---
     editions: Edition[];
     activeEdition: Edition | null;
@@ -362,7 +362,7 @@ const mapAssignmentToDb = (assignment: Partial<JudgeAssignment>): any => {
 };
 
 const getDeadlineKeyForAdmin = (admin: User): string => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
     switch (admin.currentRole) {
         case UserRole.REGIONAL_ADMIN:
             return `submission_deadline_region_${formatForKy(admin.region)}`;
@@ -376,7 +376,7 @@ const getDeadlineKeyForAdmin = (admin: User): string => {
 };
 
 const getApplicableDeadline = (user: User, allDeadlines: Record<string, string>): string | null => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
 
     // Prepare keys
     const regionKey = user.region ? `submission_deadline_region_${formatForKy(user.region)}` : null;
@@ -419,7 +419,7 @@ const getApplicableDeadline = (user: User, allDeadlines: Record<string, string>)
 };
 
 const getTimerScopePrefix = (scope: { region?: string; county?: string; subCounty?: string; }): string => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
     if (scope.subCounty) return `_subcounty_${formatForKy(scope.subCounty)}`;
     if (scope.county) return `_county_${formatForKy(scope.county)}`;
     if (scope.region) return `_region_${formatForKy(scope.region)}`;
@@ -428,7 +428,7 @@ const getTimerScopePrefix = (scope: { region?: string; county?: string; subCount
 
 // --- NEW --- Helper to get certificate design key for admin's jurisdiction
 const getCertificateDesignKeyForAdmin = (admin: User): string => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
     switch (admin.currentRole) {
         case UserRole.REGIONAL_ADMIN:
             return `certificate_design_region_${formatForKy(admin.region)}`;
@@ -443,7 +443,7 @@ const getCertificateDesignKeyForAdmin = (admin: User): string => {
 
 // --- NEW --- Helper to determine which certificate design to apply
 const determineApplicableCertificateDesign = (scope: { region?: string; county?: string; subCounty?: string }, allDesigns: Record<string, string>): string | null => {
-    const formatForKy = (str: string | undefined) => str ? str.toLowerCase().replace(/\s+/g, '_') : '';
+    const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
     if (scope.subCounty) {
         const key = `certificate_design_subcounty_${formatForKy(scope.subCounty)}`;
         if (allDesigns[key]) return allDesigns[key];
@@ -645,6 +645,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [allCertificateDesigns, setAllCertificateDesigns] = useState<Record<string, string>>({});
     const [applicableCertificateDesign, setApplicableCertificateDesign] = useState<string | null>(null);
     const [isEditionCompleted, setIsEditionCompleted] = useState<boolean>(false);
+    const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
 
     // --- EDITION STATE ---
     const [editions, setEditions] = useState<Edition[]>([]);
@@ -740,6 +741,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setViewingEdition(null);
         setAllCertificateDesigns({});
         setApplicableCertificateDesign(null);
+        setGeminiApiKey(null);
     }, []);
 
     // --- REFACTORED: Now fetches data for a specific edition ---
@@ -791,6 +793,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             } else {
                 setIsEditionCompleted(false);
             }
+
+            const dbApiKey = settingsMap.get('gemini_api_key');
+            if (dbApiKey) setGeminiApiKey(dbApiKey);
         }
 
     }, [showNotification]);
@@ -2833,7 +2838,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             user, users, theme, projects, assignments, activeJudgingInfo, schoolData, geographicalData,
             submissionDeadline, allDeadlines, auditLogs, notification, isLoading, isPerformingBackgroundTask, bulkTaskProgress,
             applicableTimerSettings, allTimerSettings, applicableJudgingHours, allJudgingHours, isWithinJudgingHours,
-            roboticsMissions, isRollbackPossible, isJudgingStarted, applicableCertificateDesign, isEditionCompleted,
+            roboticsMissions, isRollbackPossible, isJudgingStarted,
+            applicableCertificateDesign,
+            isEditionCompleted,
+            geminiApiKey,
             editions, activeEdition, viewingEdition, isHistoricalView,
             overallHighestLevel, viewingLevel,
             setViewingLevel,
