@@ -375,13 +375,30 @@ const getDeadlineKeyForAdmin = (admin: User): string => {
     }
 };
 
+const getActiveJurisdiction = (user: User) => {
+    if (user.currentRole === UserRole.JUDGE || user.currentRole === UserRole.COORDINATOR) {
+        return {
+            region: user.workRegion || user.region,
+            county: user.workCounty || user.county,
+            subCounty: user.workSubCounty || user.subCounty,
+        };
+    }
+    return {
+        region: user.region,
+        county: user.county,
+        subCounty: user.subCounty,
+    };
+};
+
 const getApplicableDeadline = (user: User, allDeadlines: Record<string, string>): string | null => {
     const formatForKy = (str: string | undefined) => str ? str.trim().toLowerCase().replace(/\s+/g, '_') : '';
 
+    const scope = getActiveJurisdiction(user);
+
     // Prepare keys
-    const regionKey = user.region ? `submission_deadline_region_${formatForKy(user.region)}` : null;
-    const countyKey = user.county ? `submission_deadline_county_${formatForKy(user.county)}` : null;
-    const subCountyKey = user.subCounty ? `submission_deadline_subcounty_${formatForKy(user.subCounty)}` : null;
+    const regionKey = scope.region ? `submission_deadline_region_${formatForKy(scope.region)}` : null;
+    const countyKey = scope.county ? `submission_deadline_county_${formatForKy(scope.county)}` : null;
+    const subCountyKey = scope.subCounty ? `submission_deadline_subcounty_${formatForKy(scope.subCounty)}` : null;
     const nationalKey = 'submission_deadline';
 
     // Role-based hierarchy
@@ -850,8 +867,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     }
                 }
             });
+            const activeJurisdiction = getActiveJurisdiction(userProfile);
             setAllTimerSettings(allTimers);
-            setApplicableTimerSettings(determineApplicableTimers(currentUserProfile, allTimers));
+            setApplicableTimerSettings(determineApplicableTimers(activeJurisdiction, allTimers));
 
             const allHours: Record<string, Partial<JudgingHoursSettings>> = {};
             const dbHoursKeys = { startTime: 'judging_start_time', endTime: 'judging_end_time' };
@@ -865,7 +883,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
             });
             setAllJudgingHours(allHours);
-            setApplicableJudgingHours(determineApplicableJudgingHours(currentUserProfile, allHours));
+            setApplicableJudgingHours(determineApplicableJudgingHours(activeJurisdiction, allHours));
 
             setRoboticsMissionsState({
                 mission1: String(settingsMap.get('robotics_mission_1') || 'Delivering a white cuboid to the school'),
@@ -877,7 +895,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 designs[s.key] = s.value;
             });
             setAllCertificateDesigns(designs);
-            setApplicableCertificateDesign(determineApplicableCertificateDesign(currentUserProfile, designs));
+            setApplicableCertificateDesign(determineApplicableCertificateDesign(activeJurisdiction, designs));
 
             if (currentActiveEdition) {
                 const completedFlag = settingsMap.get(`edition_completed_${currentActiveEdition.id}`);
