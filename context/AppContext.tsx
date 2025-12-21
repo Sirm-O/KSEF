@@ -867,7 +867,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     }
                 }
             });
-            const activeJurisdiction = getActiveJurisdiction(userProfile);
+            const activeJurisdiction = getActiveJurisdiction(currentUserProfile);
             setAllTimerSettings(allTimers);
             setApplicableTimerSettings(determineApplicableTimers(activeJurisdiction, allTimers));
 
